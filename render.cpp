@@ -7,7 +7,7 @@ struct INTVEC2
     int y;
 };
 
-void rasterizeTriangle(unsigned long *dest, const unsigned int &destWidth, const unsigned int &color,
+void rasterizeTriangle(unsigned long *dest, const unsigned int &destWidth, const unsigned int &destHeight, const unsigned int &color,
                        VEC2 t0, VEC2 t1, VEC2 t2)
 {
     if (t0.y > t1.y) std::swap(t0, t1);
@@ -28,11 +28,15 @@ void rasterizeTriangle(unsigned long *dest, const unsigned int &destWidth, const
         B.y = int(second_half ? t1.y + (t2.y - t1.y) * beta : t0.y + (t1.y - t0.y) * beta);
         if (A.x > B.x) std::swap(A, B);
         unsigned long incr = (A.x + ((int)t0.y + i) * destWidth);
-        if(incr > 0 && incr < 1264*696)
+        if(incr < destWidth*destHeight) // ??
         {
-            unsigned long *pData = dest + incr;
-            for (int x = A.x; x <= B.x; x++) *pData++ = color;
-        }
+            //unsigned long *pData = dest + incr;
+            for (int x = A.x; x <= B.x; x++)
+            {
+                if(incr > 0 && incr < destWidth*destHeight) dest[incr] = color;
+                incr++;
+            }
+       }
     }
 }
 

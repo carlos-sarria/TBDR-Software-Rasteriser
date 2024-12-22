@@ -64,7 +64,7 @@ void apiSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsigne
         t2.x = vertices[indices[i*3+2]].trans.x;
         t2.y = vertices[indices[i*3+2]].trans.y;
 
-        rasterizeTriangle(frameBuffer, frameWidth, colors[i%5], t0, t1, t2);
+        rasterizeTriangle(frameBuffer, frameWidth, frameHeight, colors[i%5], t0, t1, t2);
     }
 #else
     rasterizeTriangle(frameBuffer, frameWidth, colors[2],
