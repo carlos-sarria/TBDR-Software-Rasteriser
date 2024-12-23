@@ -30,7 +30,6 @@ void rasterizeTriangle(unsigned long *dest, const unsigned int &destWidth, const
         unsigned long incr = (A.x + ((int)t0.y + i) * destWidth);
         if(incr < destWidth*destHeight) // ??
         {
-            //unsigned long *pData = dest + incr;
             for (int x = A.x; x <= B.x; x++)
             {
                 if(incr > 0 && incr < destWidth*destHeight) dest[incr] = color;

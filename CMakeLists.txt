@@ -20,6 +20,8 @@ add_executable(rasteriser WIN32
     draw_scene.cpp
     draw_scene.h
     log.h
+    tiler.h
+    tiler.cpp
 )
 
 target_compile_definitions(rasteriser PRIVATE $<$<CONFIG:Debug>:DEBUG=1> $<$<NOT:$<CONFIG:Debug>>:RELEASE=1> ) #Defines DEBUG=1 or RELEASE=1
