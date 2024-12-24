@@ -11,7 +11,7 @@ void apiSetupScreenBuffer(void *buffer, int width, int height)
 
 void apiStartRender()
 {
-
+    tilerClear();
 }
 
 void apiEndRender()
@@ -23,7 +23,7 @@ void apiEndRender()
 void apiSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsigned short *indices, const unsigned int &numTriangles,
                      TEXTURE texture, MATRIX transformationMatrix)
 {
-    //tilerSetMaterial(const int &materialID);
+    tilerSetMaterial(texture);
     tilerSetTransformation(transformationMatrix.f);
     tilerSendVertices (vertices, numVertices, indices, numTriangles);
 }

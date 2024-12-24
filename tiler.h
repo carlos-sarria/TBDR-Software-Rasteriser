@@ -16,10 +16,12 @@ struct T_TRI
 
 void tilerSetup(const int &width, const int &height, const unsigned int& bytesPM = MEGABYTE, void *debugBuffer = nullptr);
 
-void tilerSetMaterial(const int &materialID);
+void tilerSetMaterial(TEXTURE texture);
 
 void tilerSetTransformation(const float transformationMatrix[16]);
 
 void tilerSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsigned short *indices, const unsigned int &numTriangles);
+
+void tilerClear();
 
 #endif // TILER_H

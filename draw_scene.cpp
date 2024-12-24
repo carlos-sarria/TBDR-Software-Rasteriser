@@ -111,11 +111,13 @@ void draw_frame ()
 
     for(MESH& mesh : gltfScene.meshes)
     {
+        //if(mesh.trianglesCount < 100) continue; // DEBUG remove ground
+
         MATRIX mModel, mMVP;
         mModel.scaling(mesh.transform.scale.x, mesh.transform.scale.y, mesh.transform.scale.z);
         mModel.rotationQ(mesh.transform.rotation);
         mModel.translation(mesh.transform.translation.x, mesh.transform.translation.y, mesh.transform.translation.z);
-        mModel.rotationZ(angle); // FOR TESTING
+       // mModel.rotationZ(angle); mModel.rotationX(angle/2.0f);// FOR TESTING
 
         mMVP = mModel * mView * mProjection;
 
@@ -125,7 +127,7 @@ void draw_frame ()
 
     apiEndRender();
 
-    angle += 0.01f;
+    angle += 0.001f;
 }
 
 void free_all()
