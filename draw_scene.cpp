@@ -93,8 +93,6 @@ void initialise_app(const char* gltfFile, unsigned int width, unsigned int heigh
 
     SCREEN_HEIGHT = height;
     SCREEN_WIDTH = width;
-
-    //apiSetupScreenBuffer(void *screenBuffer, 1028, 800);
 }
 void draw_frame ()
 {
@@ -113,15 +111,21 @@ void draw_frame ()
 
     for(MESH& mesh : gltfScene.meshes)
     {
-        //if(mesh.trianglesCount < 100) continue; // DEBUG remove ground
-
         MATRIX mModel, mMVP;
         mModel.scaling(mesh.transform.scale.x, mesh.transform.scale.y, mesh.transform.scale.z);
         mModel.rotationQ(mesh.transform.rotation);
         mModel.translation(mesh.transform.translation.x, mesh.transform.translation.y, mesh.transform.translation.z);
-        mModel.rotationZ(angle); mModel.rotationX(angle/2.0f);// FOR TESTING
+        mModel.rotationZ(angle); // mModel.rotationX(angle/2.0f);// FOR TESTING
 
-        mMVP = mModel * mView * mProjection;
+        apiSetWorldMatrix(mModel);
+        apiSetViewMatrix(mView);
+        apiSetProjectionMatrix(mProjection) ;
+
+        // Transform the light using the inverse model matrix. This will
+        // allow to do smooth shading with just a dot product in the vertex shader
+        mModel.inverse();
+        VEC3 lightDir = gltfScene.lights[0].transform.translation; // Position as we use point light
+        apiSetLight(mModel * lightDir);
 
         //apiLog("MESH %d %d %d\n", mesh.indexBuffer[0], mesh.indexBuffer[1], mesh.indexBuffer[2]);
         apiSendVertices (mesh.vertexBuffer, mesh.vertexCount, mesh.indexBuffer, mesh.indexCount, gltfScene.textures[mesh.textureID], mMVP);

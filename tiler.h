@@ -18,10 +18,16 @@ void tilerSetup(const int &width, const int &height, const unsigned int& bytesPM
 
 void tilerSetMaterial(TEXTURE texture);
 
-void tilerSetTransformation(const float transformationMatrix[16]);
-
 void tilerSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsigned short *indices, const unsigned int &numTriangles);
 
 void tilerClear();
+
+void tilerSetWorldMatrix(MATRIX m);
+
+void tilerSetViewMatrix(MATRIX m);
+
+void tilerSetProjectionMatrix(MATRIX m);
+
+void tilerSetLight(VEC3 lightPosition);
 
 #endif // TILER_H

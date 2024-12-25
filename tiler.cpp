@@ -9,9 +9,18 @@ float  *tilerDB;
 int   frameWidth, frameHeight;
 int   frameArea;
 TEXTURE tilerTexture;
-float tilerTM[16];
 unsigned int colors[5] = {0x00FF0000,0x0000FF00,0x000000FF,0x00FFFF00,0x0000FFFF};
 unsigned long *tilerDebugBuffer;
+VEC3 tilerLightPosition;
+
+MATRIX tilerWorld;
+MATRIX tilerProjection;
+MATRIX tilerView;
+
+void tilerSetWorldMatrix(MATRIX m) { tilerWorld = m; }
+void tilerSetViewMatrix(MATRIX m) { tilerView = m; }
+void tilerSetProjectionMatrix(MATRIX m) { tilerProjection = m; }
+void tilerSetLight(VEC3 lightPosition) { tilerLightPosition = lightPosition;};
 
 void tilerSetup(const int &width, const int &height, const unsigned int& bytesPM, void *debugBuffer)
 {
@@ -45,12 +54,6 @@ void tilerSetMaterial(TEXTURE texture)
 {
     tilerTexture = texture;
 }
-
-void tilerSetTransformation(const float transformationMatrix[16])
-{
-    memcpy (tilerTM, transformationMatrix, sizeof(float)*16);
-}
-
 
 #define GUARDBAND 0.0f
 inline bool tilerCulling (VEC3 t0, VEC3 t1, VEC3 t2)
@@ -134,8 +137,15 @@ void tilerRasterize(unsigned short *indices, const unsigned int &numIndices, TR_
                             unsigned int texU = (unsigned int)((v0.uv.u*u + v1.uv.u*v + v2.uv.u*w) * tilerTexture.width / depth) % tilerTexture.width;
                             unsigned int texV = (unsigned int)((v0.uv.v*u + v1.uv.v*v + v2.uv.v*w) * tilerTexture.width / depth) % tilerTexture.height;
 
+                            // Smooth shading
+                            float Shade = (v0.intensity*u + v1.intensity*v + v2.intensity*w)  / depth;
+
                             // Draw the pixel on the screen buffer
-                            tilerDebugBuffer[incr] = tilerTexture.data[texU+texV*tilerTexture.width];
+                            unsigned int c = tilerTexture.data[texU+texV*tilerTexture.width];
+                            unsigned int r = int((float)(c>>16&0xFF)*Shade);
+                            unsigned int g = int((float)(c>>8&0xFF)*Shade);
+                            unsigned int b = int((float)(c&0xFF)*Shade);
+                            tilerDebugBuffer[incr] = 0xFF<<24|r<<16|g<<8|b;
                         }
                     }
                     incr++;
@@ -145,15 +155,21 @@ void tilerRasterize(unsigned short *indices, const unsigned int &numIndices, TR_
     }
 }
 
-inline VEC3 tilerTransform (VERTEX *v, const unsigned int &numVertices, TR_VERTEX *meshTVB)
-{ 
+void tilerTransform (VERTEX *v, const unsigned int &numVertices, TR_VERTEX *meshTVB)
+{
+    MATRIX mMVP = tilerWorld * tilerView * tilerProjection;
+
     for (int i = 0; i < numVertices; i++)
     {
         VEC3 out;
 
-        out.x = v[i].pos.x*tilerTM[0] + v[i].pos.y*tilerTM[4] + v[i].pos.z*tilerTM[8]  + 1.0f*tilerTM[12];
-        out.y = v[i].pos.x*tilerTM[1] + v[i].pos.y*tilerTM[5] + v[i].pos.z*tilerTM[9]  + 1.0f*tilerTM[13];
-        out.z = v[i].pos.x*tilerTM[2] + v[i].pos.y*tilerTM[6] + v[i].pos.z*tilerTM[10] + 1.0f*tilerTM[14];
+        out.x = v[i].pos.x*mMVP.f[0] + v[i].pos.y*mMVP.f[4] + v[i].pos.z*mMVP.f[8]  + 1.0f*mMVP.f[12];
+        out.y = v[i].pos.x*mMVP.f[1] + v[i].pos.y*mMVP.f[5] + v[i].pos.z*mMVP.f[9]  + 1.0f*mMVP.f[13];
+        out.z = v[i].pos.x*mMVP.f[2] + v[i].pos.y*mMVP.f[6] + v[i].pos.z*mMVP.f[10] + 1.0f*mMVP.f[14];
+
+        VEC3 light = tilerLightPosition-v[i].pos;
+        light.normalize();
+        float shade = (v[i].nor.x*light.x + v[i].nor.y*light.y + v[i].nor.z*light.z) * 0.5 + 0.5f;
 
         float div = 1.0f/out.z;
         meshTVB[i].pos.x = out.x * div * (frameWidth/2) + frameWidth/2;
@@ -163,7 +179,7 @@ inline VEC3 tilerTransform (VERTEX *v, const unsigned int &numVertices, TR_VERTE
         meshTVB[i].uv.u = v[i].uv.u * div;
         meshTVB[i].uv.v = v[i].uv.v * div;
 
-        meshTVB[i].intensity = 1.0f;
+        meshTVB[i].intensity = shade * div;
     }
 }
 
