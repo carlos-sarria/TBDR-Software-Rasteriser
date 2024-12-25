@@ -99,6 +99,8 @@ void initialise_app(const char* gltfFile, unsigned int width, unsigned int heigh
 void draw_frame ()
 {
     static float angle = 0.0f;
+    static int numFrames = 0;
+    static clock_t start = clock();
     MATRIX mView, mProjection;
     mView.lookAtRH(camera.from, camera.to, VEC3(0.0f,0.0f,1.0f));
 
@@ -117,17 +119,25 @@ void draw_frame ()
         mModel.scaling(mesh.transform.scale.x, mesh.transform.scale.y, mesh.transform.scale.z);
         mModel.rotationQ(mesh.transform.rotation);
         mModel.translation(mesh.transform.translation.x, mesh.transform.translation.y, mesh.transform.translation.z);
-       // mModel.rotationZ(angle); mModel.rotationX(angle/2.0f);// FOR TESTING
+        mModel.rotationZ(angle); mModel.rotationX(angle/2.0f);// FOR TESTING
 
         mMVP = mModel * mView * mProjection;
 
         //apiLog("MESH %d %d %d\n", mesh.indexBuffer[0], mesh.indexBuffer[1], mesh.indexBuffer[2]);
-        apiSendVertices (mesh.vertexBuffer, mesh.vertexCount, mesh.indexBuffer, mesh.trianglesCount, gltfScene.textures[mesh.textureID], mMVP);
+        apiSendVertices (mesh.vertexBuffer, mesh.vertexCount, mesh.indexBuffer, mesh.indexCount, gltfScene.textures[mesh.textureID], mMVP);
     }
 
     apiEndRender();
 
-    angle += 0.001f;
+    angle += 0.01f;
+    numFrames++;
+
+    if(clock()-start > 1000L) // 1 seconds
+    {
+        apiLog(" %d FPS", numFrames);
+        numFrames = 0;
+        start = clock();
+    }
 }
 
 void free_all()

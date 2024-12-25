@@ -9,8 +9,8 @@ set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT D
 
 add_executable(rasteriser WIN32
     windows.cpp
-    render.cpp
-    render.h
+
+
     api.h
     api.cpp
     dds-ktx.h  tiny_gltf.h

@@ -7,11 +7,11 @@
 #define MEGABYTE 1048576
 #define TILE_SIZE 8
 
-struct T_TRI
+struct TR_VERTEX
 {
-    int indices[3];
-    float barycentric[3];
-    int material;
+    VEC3 pos;
+    VEC2 uv;
+    float intensity;
 };
 
 void tilerSetup(const int &width, const int &height, const unsigned int& bytesPM = MEGABYTE, void *debugBuffer = nullptr);

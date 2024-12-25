@@ -25,7 +25,7 @@ void apiEndRender();
 
 // vertices are of the form: fX, fY, fZ, fNX, fNY, fNZ, fU, fV
 // Triangle list
-void apiSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsigned short *indices, const unsigned int &numTriangles,
+void apiSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsigned short *indices, const unsigned int &numIndices,
                      TEXTURE texture, MATRIX transformationMatrix);
 
 

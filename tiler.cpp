@@ -2,7 +2,6 @@
 #include "log.h"
 #include <stdlib.h>
 
-T_TRI  *tilerTB;
 VERTEX *tilerVB;
 int    *tilerPB;
 float  *tilerDB;
@@ -18,7 +17,6 @@ void tilerSetup(const int &width, const int &height, const unsigned int& bytesPM
 {
     frameWidth = width;
     frameHeight = height;
-    tilerTB = (T_TRI *) malloc(bytesPM);
     tilerVB = (VERTEX *) malloc(bytesPM);
     tilerPB = (int *) malloc(bytesPM);
     tilerDB = (float *) malloc(frameWidth*frameHeight*sizeof(float));
@@ -28,7 +26,6 @@ void tilerSetup(const int &width, const int &height, const unsigned int& bytesPM
 
 void tilerRelease()
 {
-    if(tilerTB) { free(tilerTB); tilerTB = nullptr;}
     if(tilerVB) { free(tilerVB); tilerVB = nullptr;}
     if(tilerPB) { free(tilerPB); tilerPB = nullptr;}
     if(tilerDB) { free(tilerDB); tilerDB = nullptr;}
@@ -54,90 +51,6 @@ void tilerSetTransformation(const float transformationMatrix[16])
     memcpy (tilerTM, transformationMatrix, sizeof(float)*16);
 }
 
-#define dot(v0,v1) (v0.x*v1.x+v0.y*v1.y)
-
-void tilerRasterize(VERTEX in_v0, VERTEX in_v1, VERTEX in_v2, unsigned int color)
-{
-    VERTEX v0=in_v0, v1=in_v1, v2=in_v2;
-    if (v0.pos.y > v1.pos.y) std::swap(v0, v1);
-    if (v0.pos.y > v2.pos.y) std::swap(v0, v2);
-    if (v1.pos.y > v2.pos.y) std::swap(v1, v2);
-
-    VEC3 t0 = v0.pos, t1 = v1.pos, t2 = v2.pos;
-    int total_height = t2.y - t0.y;
-
-    // Barycentric coordinates
-    VEC3 b0 = t1 - t0, b1 = t2 - t0;
-    float d00 = dot(b0, b0);
-    float d01 = dot(b0, b1);
-    float d11 = dot(b1, b1);
-    float invDenom = 1.0 / (d00 * d11 - d01 * d01);
-
-    for (int i = 0; i < total_height; i++)
-    {
-        bool second_half = i > t1.y - t0.y || t1.y == t0.y;
-        int segment_height = second_half ? t2.y - t1.y : t1.y - t0.y;
-        float alpha = (float)i / total_height;
-        float beta = (float)(i - (second_half ? t1.y - t0.y : 0)) / segment_height;
-
-        int Ax, Ay, Bx, By;
-        Ax = int(t0.x + (t2.x - t0.x) * alpha);
-        Ay = int(t0.y + (t2.y - t0.y) * alpha);
-        Bx = int(second_half ? t1.x + (t2.x - t1.x) * beta : t0.x + (t1.x - t0.x) * beta);
-        By = int(second_half ? t1.y + (t2.y - t1.y) * beta : t0.y + (t1.y - t0.y) * beta);
-        if (Ax > Bx) { std::swap(Ax, Bx); std::swap(Ay, By);}
-
-        unsigned long incr = (Ax + ((int)t0.y + i) * frameWidth);
-        if(incr < frameArea) // ??
-        {
-            for (int x = Ax; x <= Bx; x++)
-            {
-                if(x>=0 && x<frameWidth && incr < frameArea)
-                {
-                    VEC3 p(x, i+t0.y, 0.0f);
-                    VEC3 b2 = p - t0;
-                    float d20 = dot(b2, b0);
-                    float d21 = dot(b2, b1);
-                    float v = (d11 * d20 - d01 * d21) * invDenom;
-                    float w = (d00 * d21 - d01 * d20) * invDenom;
-                    float u = 1.0f - v - w;
-
-                    float depth = v0.pos.z*u + v1.pos.z*v + v1.pos.z*w;
-
-                    if(depth>=tilerDB[incr])
-                    {
-
-                        tilerDB[incr] = depth; // Update the depth buffer with the new value
-
-                        unsigned int texU = (unsigned int)((v0.uv.u*u + v1.uv.u*v + v2.uv.u*w)*tilerTexture.width)%tilerTexture.width;
-                        unsigned int texV = (unsigned int)((v0.uv.v*u + v1.uv.v*v + v2.uv.v*w)*tilerTexture.height)%tilerTexture.height;
-
-                        tilerDebugBuffer[incr] = tilerTexture.data[texU+texV*tilerTexture.width];
-                    }
-                }
-                incr++;
-            }
-        }
-    }
-}
-
-inline VEC3 tilerTransform (VEC3 pos)
-{
-    VEC3 out;
-    VEC3 screenCenter(frameWidth/2,frameHeight/2, 0.0f);
-
-    out.x = pos.x*tilerTM[0] + pos.y*tilerTM[4] + pos.z*tilerTM[8]  + 1.0f*tilerTM[12];
-    out.y = pos.x*tilerTM[1] + pos.y*tilerTM[5] + pos.z*tilerTM[9]  + 1.0f*tilerTM[13];
-    out.z = pos.x*tilerTM[2] + pos.y*tilerTM[6] + pos.z*tilerTM[10] + 1.0f*tilerTM[14];
-
-    float div = screenCenter.x/out.z;
-    out.x = out.x * div;
-    out.y = out.y * div;
-    out.z = 1.0f / out.z;
-    out = out + screenCenter;
-
-    return out;
-}
 
 #define GUARDBAND 0.0f
 inline bool tilerCulling (VEC3 t0, VEC3 t1, VEC3 t2)
@@ -156,21 +69,110 @@ inline bool tilerCulling (VEC3 t0, VEC3 t1, VEC3 t2)
     return false;
 }
 
-void tilerSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsigned short *indices, const unsigned int &numTriangles)
+#define dot(v0,v1) (v0.x*v1.x+v0.y*v1.y)
+void tilerRasterize(unsigned short *indices, const unsigned int &numIndices, TR_VERTEX *meshTVB)
 {
-    for (int i=0; i<numTriangles*3;)
+    for (int idx = 0; idx < numIndices;)
     {
-        VERTEX v0, v1, v2;
-
-        v0 = vertices[indices[i]];
-        v0.pos = tilerTransform (vertices[indices[i++]].pos);
-        v1 = vertices[indices[i]];
-        v1.pos = tilerTransform (vertices[indices[i++]].pos);
-        v2 = vertices[indices[i]];
-        v2.pos = tilerTransform (vertices[indices[i++]].pos);
+        TR_VERTEX v0 = meshTVB[indices[idx++]];
+        TR_VERTEX v1 = meshTVB[indices[idx++]];
+        TR_VERTEX v2 = meshTVB[indices[idx++]];
 
         if (tilerCulling(v0.pos, v1.pos, v2.pos)) continue;
 
-        tilerRasterize(v0,v1,v2,colors[i%5]);
+        if (v0.pos.y > v1.pos.y) std::swap(v0, v1);
+        if (v0.pos.y > v2.pos.y) std::swap(v0, v2);
+        if (v1.pos.y > v2.pos.y) std::swap(v1, v2);
+
+        VEC3 t0 = v0.pos, t1 = v1.pos, t2 = v2.pos;
+        int total_height = t2.y - t0.y;
+
+        // Barycentric coordinates
+        VEC3 bry0 = t1 - t0, bry1 = t2 - t0;
+        float d00 = dot(bry0, bry0);
+        float d01 = dot(bry0, bry1);
+        float d11 = dot(bry1, bry1);
+        float invDenom = 1.0 / (d00 * d11 - d01 * d01);
+
+        for (int i = 0; i < total_height; i++)
+        {
+            bool second_half = i > t1.y - t0.y || t1.y == t0.y;
+            int segment_height = second_half ? t2.y - t1.y : t1.y - t0.y;
+            float alpha = (float)i / total_height;
+            float beta = (float)(i - (second_half ? t1.y - t0.y : 0)) / segment_height;
+
+            int Ax, Ay, Bx, By;
+            Ax = int(t0.x + (t2.x - t0.x) * alpha);
+            Ay = int(t0.y + (t2.y - t0.y) * alpha);
+            Bx = int(second_half ? t1.x + (t2.x - t1.x) * beta : t0.x + (t1.x - t0.x) * beta);
+            By = int(second_half ? t1.y + (t2.y - t1.y) * beta : t0.y + (t1.y - t0.y) * beta);
+            if (Ax > Bx) { std::swap(Ax, Bx); std::swap(Ay, By);}
+
+            unsigned long incr = (Ax + ((int)t0.y + i) * frameWidth);
+            if(incr < frameArea) // ??
+            {
+                for (int x = Ax; x <= Bx; x++)
+                {
+                    if(x>=0 && x<frameWidth && incr < frameArea)
+                    {
+                        VEC3 p(x, i+t0.y, 0.0f);
+                        VEC3 bry2 = p - t0;
+                        float d20 = dot(bry2, bry0);
+                        float d21 = dot(bry2, bry1);
+                        float v = (d11 * d20 - d01 * d21) * invDenom;
+                        float w = (d00 * d21 - d01 * d20) * invDenom;
+                        float u = 1.0f - v - w;
+
+                        float depth = v0.pos.z*u + v1.pos.z*v + v2.pos.z*w;
+
+                        if(depth>=tilerDB[incr])
+                        {
+                            // Update the depth buffer with the new value
+                            tilerDB[incr] = depth;
+
+                            // Perspective correct texture coordinates
+                            unsigned int texU = (unsigned int)((v0.uv.u*u + v1.uv.u*v + v2.uv.u*w) * tilerTexture.width / depth) % tilerTexture.width;
+                            unsigned int texV = (unsigned int)((v0.uv.v*u + v1.uv.v*v + v2.uv.v*w) * tilerTexture.width / depth) % tilerTexture.height;
+
+                            // Draw the pixel on the screen buffer
+                            tilerDebugBuffer[incr] = tilerTexture.data[texU+texV*tilerTexture.width];
+                        }
+                    }
+                    incr++;
+                }
+            }
+        }
     }
+}
+
+inline VEC3 tilerTransform (VERTEX *v, const unsigned int &numVertices, TR_VERTEX *meshTVB)
+{ 
+    for (int i = 0; i < numVertices; i++)
+    {
+        VEC3 out;
+
+        out.x = v[i].pos.x*tilerTM[0] + v[i].pos.y*tilerTM[4] + v[i].pos.z*tilerTM[8]  + 1.0f*tilerTM[12];
+        out.y = v[i].pos.x*tilerTM[1] + v[i].pos.y*tilerTM[5] + v[i].pos.z*tilerTM[9]  + 1.0f*tilerTM[13];
+        out.z = v[i].pos.x*tilerTM[2] + v[i].pos.y*tilerTM[6] + v[i].pos.z*tilerTM[10] + 1.0f*tilerTM[14];
+
+        float div = 1.0f/out.z;
+        meshTVB[i].pos.x = out.x * div * (frameWidth/2) + frameWidth/2;
+        meshTVB[i].pos.y = out.y * div * (frameWidth/2) + frameHeight/2;
+        meshTVB[i].pos.z = div;
+
+        meshTVB[i].uv.u = v[i].uv.u * div;
+        meshTVB[i].uv.v = v[i].uv.v * div;
+
+        meshTVB[i].intensity = 1.0f;
+    }
+}
+
+void tilerSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsigned short *indices, const unsigned int &numIndices)
+{
+    TR_VERTEX *meshTVB = (TR_VERTEX *)malloc(numVertices*sizeof(TR_VERTEX));
+
+    tilerTransform (vertices, numVertices, meshTVB);
+    tilerRasterize (indices, numIndices, meshTVB);
+
+    free(meshTVB);
 }

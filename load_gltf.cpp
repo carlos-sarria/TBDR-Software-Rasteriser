@@ -28,15 +28,18 @@ bool loadDDS(const char* textureFileName, TEXTURE& texture)
 
     if (ddsktx_parse(&tc, fileData, fileSize, NULL))
     {
-        for (int mip = 0; mip < 1 /*tc.num_mips*/; mip++)
+        if(tc.num_mips>0)
         {
+            for (int mip = 0; mip < tc.num_mips; mip++)
+            {
 
-            ddsktx_sub_data sub_data;
-            ddsktx_get_sub(&tc, &sub_data, fileData, fileSize, 0, 0, mip);
-            texture.data = (unsigned int *)malloc(sub_data.size_bytes * sizeof(int));
-            memcpy(texture.data, sub_data.buff, sub_data.size_bytes * sizeof(int));
-            texture.width = sub_data.width;
-            texture.height = sub_data.height;
+                ddsktx_sub_data sub_data;
+                ddsktx_get_sub(&tc, &sub_data, fileData, fileSize, 0, 0, mip);
+                texture.data = (unsigned int *)malloc(sub_data.size_bytes);
+                memcpy(texture.data, sub_data.buff, sub_data.size_bytes);
+                texture.width = sub_data.width;
+                texture.height = sub_data.height;
+            }
         }
     }
 
@@ -55,12 +58,17 @@ static bool myTextureLoadingFunction(tinygltf::Image *image, const int image_idx
     // The data received here is just the RGBA exported by Blender
     // we will need to use the texture name and work out the DDS file
 
+TEXTURE texture;
+#if 1
     std::string uri = "..//model//"+image->name+".dds";
-
-    TEXTURE texture;
     loadDDS(uri.c_str(), texture);
+#else  // PNG Format
+    texture.data = (unsigned int *)malloc(size);//bytes;
+    memcpy(texture.data, bytes, size);
+    texture.height = image->height;
+    texture.width = image->width;
+#endif
     gltfScene.textures.push_back(texture);
-
     return true;
 }
 
@@ -195,7 +203,7 @@ void load_gltf(const char* fileName)
 
                 getTransform(temp_mesh.transform, node);
 
-                temp_mesh.trianglesCount = numIndices/3;
+                temp_mesh.indexCount = numIndices;
                 temp_mesh.vertexCount = numVertices;
                 temp_mesh.vertexBuffer = temp_mesh.vertexBuffer;
 

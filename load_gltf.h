@@ -36,7 +36,7 @@ struct MESH
     VERTEX* vertexBuffer;
     unsigned short* indexBuffer;
     unsigned int vertexCount;
-    unsigned int trianglesCount;
+    unsigned int indexCount;
     TRANSFORM transform;
     unsigned int textureID;
 };
