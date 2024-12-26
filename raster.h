@@ -17,6 +17,13 @@ struct TEXTURE
     unsigned int *data;
 };
 
+enum CULLING
+{
+    CULL_NONE,
+    CULL_BACK,
+    CULL_FRONT
+};
+
 void rasterClear(unsigned int color=0x00000000, float depth=0.0f);
 
 void rasterInitialise(const int &width, const int &height, void *debugBuffer = nullptr);

@@ -9,52 +9,58 @@ struct TR_VERTEX
     float intensity;
 };
 
-float  *depthBuffer;
-unsigned long *colorBuffer;
+struct RENDER_STATE
+{
+    float  *depthBuffer;
+    unsigned long *colorBuffer;
 
-int   frameWidth, frameHeight;
-int   frameArea;
-TEXTURE rasterTexture;
-unsigned int colors[5] = {0x00FF0000,0x0000FF00,0x000000FF,0x00FFFF00,0x0000FFFF};
+    unsigned int width;
+    unsigned int height;
 
-VEC3 lightPosition;
+    TEXTURE texture;
 
-MATRIX rasterWorld;
-MATRIX rasterProjection;
-MATRIX rasterView;
+    VEC3 lightPosition;
 
-void rasterSetWorldMatrix(MATRIX m) { rasterWorld = m; }
-void rasterSetViewMatrix(MATRIX m) { rasterView = m; }
-void rasterSetProjectionMatrix(MATRIX m) { rasterProjection = m; }
-void rasterSetLight(VEC3 pos) { lightPosition = pos;};
+    MATRIX worldMatrix;
+    MATRIX projectionMatrix;
+    MATRIX viewMatrix;
+} rs;
+
+
+void rasterSetWorldMatrix(MATRIX m) { rs.worldMatrix = m; }
+
+void rasterSetViewMatrix(MATRIX m) { rs.viewMatrix = m; }
+
+void rasterSetProjectionMatrix(MATRIX m) { rs.projectionMatrix = m; }
+
+void rasterSetLight(VEC3 pos) { rs.lightPosition = pos;};
 
 void rasterInitialise(const int &width, const int &height, void *debugBuffer)
 {
-    frameWidth = width;
-    frameHeight = height;
-    frameArea = frameWidth*frameHeight;
-    depthBuffer = (float *) malloc(frameWidth*frameHeight*sizeof(float));
-    colorBuffer = (unsigned long *)debugBuffer;
+    rs.width = width;
+    rs.height = height;
+    rs.depthBuffer = (float *) malloc(rs.width*rs.height*sizeof(float));
+    rs.colorBuffer = (unsigned long *)debugBuffer;
 }
 
 void rasterRelease()
 {
-    if(depthBuffer) { free(depthBuffer); depthBuffer = nullptr;}
+    if(rs.depthBuffer) { free(rs.depthBuffer); rs.depthBuffer = nullptr;}
 }
 
 void rasterClear(unsigned int color, float depth)
 {
-    unsigned int i = frameArea;
+    unsigned int i = rs.width*rs.height;
     while(i--)
     {
-        depthBuffer[i]= 0.0f;
-        colorBuffer[i] = 0x00000000;
+        rs.depthBuffer[i]= 0.0f;
+        rs.colorBuffer[i] = 0x00000000;
     }
 }
 
 void rasterSetMaterial(TEXTURE texture)
 {
-    rasterTexture = texture;
+    rs.texture = texture;
 }
 
 #define GUARDBAND 0.0f
@@ -66,9 +72,9 @@ inline bool rasterCulling (VEC3 t0, VEC3 t1, VEC3 t2)
     // Visibility check
     // If there is at least one vertex inside, then the triangle is visible
     // This will not work with some triangles visible but with all vertices ouitside
-    // if(t0.x>-GUARDBAND && t0.x<frameWidth+GUARDBAND && t0.y>-GUARDBAND && t0.y<frameHeight+GUARDBAND) return false;
-    // if(t1.x>-GUARDBAND && t1.x<frameWidth+GUARDBAND && t1.y>-GUARDBAND && t1.y<frameHeight+GUARDBAND) return false;
-    // if(t2.x>-GUARDBAND && t2.x<frameWidth+GUARDBAND && t2.y>-GUARDBAND && t2.y<frameHeight+GUARDBAND) return false;
+    // if(t0.x>-GUARDBAND && t0.x<rs.width+GUARDBAND && t0.y>-GUARDBAND && t0.y<rs.height+GUARDBAND) return false;
+    // if(t1.x>-GUARDBAND && t1.x<rs.width+GUARDBAND && t1.y>-GUARDBAND && t1.y<rs.height+GUARDBAND) return false;
+    // if(t2.x>-GUARDBAND && t2.x<rs.width+GUARDBAND && t2.y>-GUARDBAND && t2.y<rs.height+GUARDBAND) return false;
     // return true; // Triangle fully outside the screen
 
     return false;
@@ -77,6 +83,8 @@ inline bool rasterCulling (VEC3 t0, VEC3 t1, VEC3 t2)
 #define dot(v0,v1) (v0.x*v1.x+v0.y*v1.y)
 void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR_VERTEX *meshTVB)
 {
+    unsigned int frameArea = rs.width*rs.height;
+
     for (int idx = 0; idx < numIndices;)
     {
         TR_VERTEX v0 = meshTVB[indices[idx++]];
@@ -113,12 +121,12 @@ void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR
             By = int(second_half ? t1.y + (t2.y - t1.y) * beta : t0.y + (t1.y - t0.y) * beta);
             if (Ax > Bx) { std::swap(Ax, Bx); std::swap(Ay, By);}
 
-            unsigned long incr = (Ax + ((int)t0.y + i) * frameWidth);
+            unsigned long incr = (Ax + ((int)t0.y + i) * rs.width);
             if(incr < frameArea) // ??
             {
                 for (int x = Ax; x <= Bx; x++)
                 {
-                    if(x>=0 && x<frameWidth && incr < frameArea)
+                    if(x>=0 && x<rs.width && incr < frameArea)
                     {
                         VEC3 p(x, i+t0.y, 0.0f);
                         VEC3 bry2 = p - t0;
@@ -130,24 +138,24 @@ void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR
 
                         float depth = v0.pos.z*u + v1.pos.z*v + v2.pos.z*w;
 
-                        if(depth>=depthBuffer[incr])
+                        if(depth>=rs.depthBuffer[incr])
                         {
                             // Update the depth buffer with the new value
-                            depthBuffer[incr] = depth;
+                            rs.depthBuffer[incr] = depth;
 
                             // Perspective correct texture coordinates
-                            unsigned int texU = (unsigned int)((v0.uv.u*u + v1.uv.u*v + v2.uv.u*w) * rasterTexture.width / depth) % rasterTexture.width;
-                            unsigned int texV = (unsigned int)((v0.uv.v*u + v1.uv.v*v + v2.uv.v*w) * rasterTexture.width / depth) % rasterTexture.height;
+                            unsigned int texU = (unsigned int)((v0.uv.u*u + v1.uv.u*v + v2.uv.u*w) * rs.texture.width / depth) % rs.texture.width;
+                            unsigned int texV = (unsigned int)((v0.uv.v*u + v1.uv.v*v + v2.uv.v*w) * rs.texture.width / depth) % rs.texture.height;
 
                             // Smooth shading
                             float Shade = (v0.intensity*u + v1.intensity*v + v2.intensity*w)  / depth;
 
                             // Draw the pixel on the screen buffer
-                            unsigned int c = rasterTexture.data[texU+texV*rasterTexture.width];
+                            unsigned int c = rs.texture.data[texU+texV*rs.texture.width];
                             unsigned int r = int((float)(c>>16&0xFF)*Shade);
                             unsigned int g = int((float)(c>>8&0xFF)*Shade);
                             unsigned int b = int((float)(c&0xFF)*Shade);
-                            colorBuffer[incr] = 0xFF<<24|r<<16|g<<8|b;
+                            rs.colorBuffer[incr] = 0xFF<<24|r<<16|g<<8|b;
                         }
                     }
                     incr++;
@@ -159,12 +167,12 @@ void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR
 
 void rasterTransform (VERTEX *v, const unsigned int &numVertices, TR_VERTEX *meshTVB)
 {
-    MATRIX mMVP = rasterWorld * rasterView * rasterProjection;
+    MATRIX mMVP = rs.worldMatrix * rs.viewMatrix * rs.projectionMatrix;
 
-    MATRIX invW = rasterWorld;
+    MATRIX invW = rs.worldMatrix;
     invW.inverse();
 
-    VEC3 transformedLight = invW * lightPosition;
+    VEC3 transformedLight = invW * rs.lightPosition;
 
     for (int i = 0; i < numVertices; i++)
     {
@@ -179,8 +187,8 @@ void rasterTransform (VERTEX *v, const unsigned int &numVertices, TR_VERTEX *mes
         float shade = (v[i].nor.x*light.x + v[i].nor.y*light.y + v[i].nor.z*light.z) * 0.5 + 0.5f;
 
         float div = 1.0f/out.z;
-        meshTVB[i].pos.x = out.x * div * (frameWidth/2) + frameWidth/2;
-        meshTVB[i].pos.y = out.y * div * (frameWidth/2) + frameHeight/2;
+        meshTVB[i].pos.x = out.x * div * (rs.width/2) + rs.width/2;
+        meshTVB[i].pos.y = out.y * div * (rs.width/2) + rs.height/2;
         meshTVB[i].pos.z = div;
 
         meshTVB[i].uv.u = v[i].uv.u * div;

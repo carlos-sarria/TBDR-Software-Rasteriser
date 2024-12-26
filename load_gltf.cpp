@@ -61,7 +61,7 @@ static bool myTextureLoadingFunction(tinygltf::Image *image, const int image_idx
 
 TEXTURE texture;
 #if 1
-    std::string uri = "..//model//"+image->name+".dds";
+    std::string uri = "..//..//model//"+image->name+".dds";
     loadDDS(uri.c_str(), texture);
 #else  // PNG Format
     texture.data = (unsigned int *)malloc(size);//bytes;
