@@ -99,8 +99,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     unsigned char keyPressed;
     bool mousePressed = false;
 
-    initialise_app("..\\model\\test.glb", bitmap.bmWidth, bitmap.bmHeight);
-    apiSetupScreenBuffer(bitmap.bmBits, bitmap.bmWidth, bitmap.bmHeight);
+    initialise_app("..\\model\\test.glb", bitmap.bmWidth, bitmap.bmHeight, bitmap.bmBits);
 
     // Initialise camera
     GetCursorPos(&mousePoint);

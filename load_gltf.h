@@ -2,9 +2,8 @@
 #define LOAD_GLTF_H
 
 #include "math.h"
-#include "api.h"
+#include "raster.h"
 #include "tiny_gltf.h"
-#include "dds-ktx.h"
 
 struct TRANSFORM
 {

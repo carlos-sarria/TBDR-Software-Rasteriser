@@ -1,4 +1,5 @@
 #include "load_gltf.h"
+#include "dds-ktx.h"
 #include "log.h"
 
 SCENE gltfScene;
@@ -117,7 +118,7 @@ void load_gltf(const char* fileName)
     const tinygltf::Scene &scene = model.scenes[model.defaultScene];
     int numCameras = 0;
     int numLights = 0;
-    for(tinygltf::Node node : model.nodes)
+    for(tinygltf::Node &node : model.nodes)
     {
         if (node.camera > -1)
         {
@@ -216,7 +217,7 @@ void load_gltf(const char* fileName)
 
 void free_gltf()
 {
-    for(MESH mesh : gltfScene.meshes)
+    for(MESH &mesh : gltfScene.meshes)
     {
         free(mesh.indexBuffer);
         free(mesh.vertexBuffer);

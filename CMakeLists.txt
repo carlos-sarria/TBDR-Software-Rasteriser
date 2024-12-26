@@ -9,10 +9,6 @@ set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT D
 
 add_executable(rasteriser WIN32
     windows.cpp
-
-
-    api.h
-    api.cpp
     dds-ktx.h  tiny_gltf.h
     load_gltf.cpp
     math.h
@@ -20,8 +16,8 @@ add_executable(rasteriser WIN32
     draw_scene.cpp
     draw_scene.h
     log.h
-    tiler.h
-    tiler.cpp
+    raster.h
+    raster.cpp
 )
 
 target_compile_definitions(rasteriser PRIVATE $<$<CONFIG:Debug>:DEBUG=1> $<$<NOT:$<CONFIG:Debug>>:RELEASE=1> ) #Defines DEBUG=1 or RELEASE=1

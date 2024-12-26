@@ -1,4 +1,6 @@
 #include "draw_scene.h"
+#include "raster.h"
+#include "load_gltf.h"
 #include "log.h"
 
 unsigned int SCREEN_WIDTH = 0;
@@ -87,12 +89,14 @@ void updateCamera(char keyPressed, const bool mousePressed, long mousePointX, lo
     camera.to = cameraPosition + vLookAt;
 }
 
-void initialise_app(const char* gltfFile, unsigned int width, unsigned int height)
+void initialise_app(const char* gltfFile, unsigned int frameWidth, unsigned int frameHeight, void *frameBuffer)
 {
     load_gltf(gltfFile);
 
-    SCREEN_HEIGHT = height;
-    SCREEN_WIDTH = width;
+    SCREEN_HEIGHT = frameHeight;
+    SCREEN_WIDTH = frameWidth;
+
+    rasterInitialise(frameWidth, frameHeight, frameBuffer);
 }
 void draw_frame ()
 {
@@ -107,7 +111,7 @@ void draw_frame ()
 
     mProjection.perspectiveFovRH(camera.yfov, aspectRatio, camera.znear, camera.zfar, isRotated);
 
-    apiStartRender();
+    rasterClear();
 
     for(MESH& mesh : gltfScene.meshes)
     {
@@ -117,21 +121,16 @@ void draw_frame ()
         mModel.translation(mesh.transform.translation.x, mesh.transform.translation.y, mesh.transform.translation.z);
         mModel.rotationZ(angle); // mModel.rotationX(angle/2.0f);// FOR TESTING
 
-        apiSetWorldMatrix(mModel);
-        apiSetViewMatrix(mView);
-        apiSetProjectionMatrix(mProjection) ;
+        rasterSetWorldMatrix(mModel);
+        rasterSetViewMatrix(mView);
+        rasterSetProjectionMatrix(mProjection) ;
 
-        // Transform the light using the inverse model matrix. This will
-        // allow to do smooth shading with just a dot product in the vertex shader
-        mModel.inverse();
-        VEC3 lightDir = gltfScene.lights[0].transform.translation; // Position as we use point light
-        apiSetLight(mModel * lightDir);
+        rasterSetLight(gltfScene.lights[0].transform.translation);
 
-        //apiLog("MESH %d %d %d\n", mesh.indexBuffer[0], mesh.indexBuffer[1], mesh.indexBuffer[2]);
-        apiSendVertices (mesh.vertexBuffer, mesh.vertexCount, mesh.indexBuffer, mesh.indexCount, gltfScene.textures[mesh.textureID], mMVP);
+        rasterSetMaterial(gltfScene.textures[mesh.textureID]);
+
+        rasterSendVertices (mesh.vertexBuffer, mesh.vertexCount, mesh.indexBuffer, mesh.indexCount);
     }
-
-    apiEndRender();
 
     angle += 0.01f;
     numFrames++;
@@ -147,4 +146,5 @@ void draw_frame ()
 void free_all()
 {
     free_gltf();
+    rasterRelease();
 }

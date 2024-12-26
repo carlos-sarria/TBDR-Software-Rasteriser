@@ -1,62 +1,64 @@
-#include "tiler.h"
+#include "raster.h"
 #include "log.h"
 #include <stdlib.h>
 
-VERTEX *tilerVB;
-int    *tilerPB;
-float  *tilerDB;
+struct TR_VERTEX
+{
+    VEC3 pos;
+    VEC2 uv;
+    float intensity;
+};
+
+float  *depthBuffer;
+unsigned long *colorBuffer;
 
 int   frameWidth, frameHeight;
 int   frameArea;
-TEXTURE tilerTexture;
+TEXTURE rasterTexture;
 unsigned int colors[5] = {0x00FF0000,0x0000FF00,0x000000FF,0x00FFFF00,0x0000FFFF};
-unsigned long *tilerDebugBuffer;
-VEC3 tilerLightPosition;
 
-MATRIX tilerWorld;
-MATRIX tilerProjection;
-MATRIX tilerView;
+VEC3 lightPosition;
 
-void tilerSetWorldMatrix(MATRIX m) { tilerWorld = m; }
-void tilerSetViewMatrix(MATRIX m) { tilerView = m; }
-void tilerSetProjectionMatrix(MATRIX m) { tilerProjection = m; }
-void tilerSetLight(VEC3 lightPosition) { tilerLightPosition = lightPosition;};
+MATRIX rasterWorld;
+MATRIX rasterProjection;
+MATRIX rasterView;
 
-void tilerSetup(const int &width, const int &height, const unsigned int& bytesPM, void *debugBuffer)
+void rasterSetWorldMatrix(MATRIX m) { rasterWorld = m; }
+void rasterSetViewMatrix(MATRIX m) { rasterView = m; }
+void rasterSetProjectionMatrix(MATRIX m) { rasterProjection = m; }
+void rasterSetLight(VEC3 pos) { lightPosition = pos;};
+
+void rasterInitialise(const int &width, const int &height, void *debugBuffer)
 {
     frameWidth = width;
     frameHeight = height;
-    tilerVB = (VERTEX *) malloc(bytesPM);
-    tilerPB = (int *) malloc(bytesPM);
-    tilerDB = (float *) malloc(frameWidth*frameHeight*sizeof(float));
     frameArea = frameWidth*frameHeight;
-    tilerDebugBuffer = (unsigned long *)debugBuffer;
+    depthBuffer = (float *) malloc(frameWidth*frameHeight*sizeof(float));
+    colorBuffer = (unsigned long *)debugBuffer;
 }
 
-void tilerRelease()
+void rasterRelease()
 {
-    if(tilerVB) { free(tilerVB); tilerVB = nullptr;}
-    if(tilerPB) { free(tilerPB); tilerPB = nullptr;}
-    if(tilerDB) { free(tilerDB); tilerDB = nullptr;}
+    if(depthBuffer) { free(depthBuffer); depthBuffer = nullptr;}
 }
 
-void tilerClear()
+void rasterClear(unsigned int color, float depth)
 {
     unsigned int i = frameArea;
     while(i--)
     {
-        tilerDB[i]= 0.0f;
-        tilerDebugBuffer[i] = 0x00000000;
+        depthBuffer[i]= 0.0f;
+        colorBuffer[i] = 0x00000000;
     }
 }
 
-void tilerSetMaterial(TEXTURE texture)
+void rasterSetMaterial(TEXTURE texture)
 {
-    tilerTexture = texture;
+    rasterTexture = texture;
 }
 
 #define GUARDBAND 0.0f
-inline bool tilerCulling (VEC3 t0, VEC3 t1, VEC3 t2)
+inline bool rasterCulling (VEC3 t0, VEC3 t1, VEC3 t2)
 {
     // Backface culling: sign = ab.x*ac.y - ac.x*ab.y;
     if((t0.x-t1.x)*(t0.y-t2.y) - (t0.x-t2.x)*(t0.y-t1.y) >= 0.0f) return true;
@@ -73,7 +75,7 @@ inline bool tilerCulling (VEC3 t0, VEC3 t1, VEC3 t2)
 }
 
 #define dot(v0,v1) (v0.x*v1.x+v0.y*v1.y)
-void tilerRasterize(unsigned short *indices, const unsigned int &numIndices, TR_VERTEX *meshTVB)
+void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR_VERTEX *meshTVB)
 {
     for (int idx = 0; idx < numIndices;)
     {
@@ -81,7 +83,7 @@ void tilerRasterize(unsigned short *indices, const unsigned int &numIndices, TR_
         TR_VERTEX v1 = meshTVB[indices[idx++]];
         TR_VERTEX v2 = meshTVB[indices[idx++]];
 
-        if (tilerCulling(v0.pos, v1.pos, v2.pos)) continue;
+        if (rasterCulling(v0.pos, v1.pos, v2.pos)) continue;
 
         if (v0.pos.y > v1.pos.y) std::swap(v0, v1);
         if (v0.pos.y > v2.pos.y) std::swap(v0, v2);
@@ -128,24 +130,24 @@ void tilerRasterize(unsigned short *indices, const unsigned int &numIndices, TR_
 
                         float depth = v0.pos.z*u + v1.pos.z*v + v2.pos.z*w;
 
-                        if(depth>=tilerDB[incr])
+                        if(depth>=depthBuffer[incr])
                         {
                             // Update the depth buffer with the new value
-                            tilerDB[incr] = depth;
+                            depthBuffer[incr] = depth;
 
                             // Perspective correct texture coordinates
-                            unsigned int texU = (unsigned int)((v0.uv.u*u + v1.uv.u*v + v2.uv.u*w) * tilerTexture.width / depth) % tilerTexture.width;
-                            unsigned int texV = (unsigned int)((v0.uv.v*u + v1.uv.v*v + v2.uv.v*w) * tilerTexture.width / depth) % tilerTexture.height;
+                            unsigned int texU = (unsigned int)((v0.uv.u*u + v1.uv.u*v + v2.uv.u*w) * rasterTexture.width / depth) % rasterTexture.width;
+                            unsigned int texV = (unsigned int)((v0.uv.v*u + v1.uv.v*v + v2.uv.v*w) * rasterTexture.width / depth) % rasterTexture.height;
 
                             // Smooth shading
                             float Shade = (v0.intensity*u + v1.intensity*v + v2.intensity*w)  / depth;
 
                             // Draw the pixel on the screen buffer
-                            unsigned int c = tilerTexture.data[texU+texV*tilerTexture.width];
+                            unsigned int c = rasterTexture.data[texU+texV*rasterTexture.width];
                             unsigned int r = int((float)(c>>16&0xFF)*Shade);
                             unsigned int g = int((float)(c>>8&0xFF)*Shade);
                             unsigned int b = int((float)(c&0xFF)*Shade);
-                            tilerDebugBuffer[incr] = 0xFF<<24|r<<16|g<<8|b;
+                            colorBuffer[incr] = 0xFF<<24|r<<16|g<<8|b;
                         }
                     }
                     incr++;
@@ -155,9 +157,14 @@ void tilerRasterize(unsigned short *indices, const unsigned int &numIndices, TR_
     }
 }
 
-void tilerTransform (VERTEX *v, const unsigned int &numVertices, TR_VERTEX *meshTVB)
+void rasterTransform (VERTEX *v, const unsigned int &numVertices, TR_VERTEX *meshTVB)
 {
-    MATRIX mMVP = tilerWorld * tilerView * tilerProjection;
+    MATRIX mMVP = rasterWorld * rasterView * rasterProjection;
+
+    MATRIX invW = rasterWorld;
+    invW.inverse();
+
+    VEC3 transformedLight = invW * lightPosition;
 
     for (int i = 0; i < numVertices; i++)
     {
@@ -167,7 +174,7 @@ void tilerTransform (VERTEX *v, const unsigned int &numVertices, TR_VERTEX *mesh
         out.y = v[i].pos.x*mMVP.f[1] + v[i].pos.y*mMVP.f[5] + v[i].pos.z*mMVP.f[9]  + 1.0f*mMVP.f[13];
         out.z = v[i].pos.x*mMVP.f[2] + v[i].pos.y*mMVP.f[6] + v[i].pos.z*mMVP.f[10] + 1.0f*mMVP.f[14];
 
-        VEC3 light = tilerLightPosition-v[i].pos;
+        VEC3 light = transformedLight-v[i].pos;
         light.normalize();
         float shade = (v[i].nor.x*light.x + v[i].nor.y*light.y + v[i].nor.z*light.z) * 0.5 + 0.5f;
 
@@ -183,12 +190,12 @@ void tilerTransform (VERTEX *v, const unsigned int &numVertices, TR_VERTEX *mesh
     }
 }
 
-void tilerSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsigned short *indices, const unsigned int &numIndices)
+void rasterSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsigned short *indices, const unsigned int &numIndices)
 {
     TR_VERTEX *meshTVB = (TR_VERTEX *)malloc(numVertices*sizeof(TR_VERTEX));
 
-    tilerTransform (vertices, numVertices, meshTVB);
-    tilerRasterize (indices, numIndices, meshTVB);
+    rasterTransform (vertices, numVertices, meshTVB);
+    rasterRasterize (indices, numIndices, meshTVB);
 
     free(meshTVB);
 }
