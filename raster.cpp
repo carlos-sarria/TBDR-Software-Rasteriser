@@ -2,8 +2,6 @@
 #include "log.h"
 #include <stdlib.h>
 
-#define COLOR_DEBUG 0
-
 struct TR_VERTEX
 {
     VEC3 pos;
@@ -60,11 +58,6 @@ void rasterClear(unsigned int color, float depth)
         rs.depthBuffer[i]= 0.0f;
         rs.colorBuffer[i] = 0x00000000;
     }
-
-#if COLOR_DEBUG
-    currColor = 0;
-    srand(0);
-#endif
 }
 
 void rasterSetMaterial(TEXTURE texture)
@@ -100,10 +93,6 @@ void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR
 {
     for (int indexCount = 0; indexCount < numIndices;)
     {
-#if COLOR_DEBUG
-        float debugShade = float(rand()%128)/255.0f+0.5f;
-#endif
-
         unsigned short in0 = indices[indexCount++];
         unsigned short in1 = indices[indexCount++];
         unsigned short in2 = indices[indexCount++];
@@ -134,24 +123,24 @@ void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR
 
             if(y<0 || y>=rs.frameHeight) continue;
 
-            bool  second_half = (y > v1.pos.y || v1.pos.y == v0.pos.y);
-            float segment_height, alpha = 1.0f, beta = 1.0f;
+            bool  is_bottom_half = (y > v1.pos.y || v1.pos.y == v0.pos.y);
+            float height, alpha = 1.0f, beta = 1.0f;
 
             int a, b;
 
             if(total_height>0) alpha = (float)i / (float)total_height;
             a = int(v0.pos.x + (v2.pos.x - v0.pos.x) * alpha);
 
-            if(second_half)
+            if(is_bottom_half)
             {
-                segment_height = ceil(v2.pos.y - v1.pos.y);
-                if(segment_height > 0.0f) beta = (float)(y - v1.pos.y) / segment_height;
+                height = ceil(v2.pos.y - v1.pos.y);
+                if(height > 0.0f) beta = (float)(y - v1.pos.y) / height;
                 b = int(v1.pos.x + (v2.pos.x - v1.pos.x) * beta);
             }
             else
             {
-                segment_height = ceil(v1.pos.y - v0.pos.y);
-                if(segment_height > 0.0f) beta = (float)(i) / segment_height;
+                height = ceil(v1.pos.y - v0.pos.y);
+                if(height > 0.0f) beta = (float)(i) / height;
                 b = int(v0.pos.x + (v1.pos.x - v0.pos.x) * beta);
             }
 
@@ -184,14 +173,9 @@ void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR
 
                     // Smooth shading
                     float Shade = (v0.intensity*u + v1.intensity*v + v2.intensity*w)  / depth;
-#if COLOR_DEBUG
-                    Shade = debugShade;
-#endif
+
                     // Draw the pixel on the screen buffer
                     unsigned int c = rs.texture.data[texU+texV*rs.texture.width];
-#if COLOR_DEBUG
-                    c = colors[currColor%6];
-#endif
                     unsigned int r = int((float)(c>>16&0xFF)*Shade);
                     unsigned int g = int((float)(c>>8&0xFF)*Shade);
                     unsigned int b = int((float)(c&0xFF)*Shade);
@@ -243,10 +227,6 @@ void rasterSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsi
 
     rasterTransform (vertices, numVertices, meshTVB);
     rasterRasterize (indices, numIndices, meshTVB);
-
-#if COLOR_DEBUG
-    currColor++;
-#endif
 
     free(meshTVB);
 }
