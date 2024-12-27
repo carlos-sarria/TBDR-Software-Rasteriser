@@ -118,7 +118,12 @@ void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR
         TR_VERTEX v1 = meshTVB[in1];
         TR_VERTEX v2 = meshTVB[in2];
 
-        int total_height = v2.pos.y - v0.pos.y;
+        // ceil = pixel top-left convention
+        VEC2 p0(ceil(v0.pos.x),ceil(v0.pos.y));
+        VEC2 p1(ceil(v1.pos.x),ceil(v1.pos.y));
+        VEC2 p2(ceil(v2.pos.x),ceil(v2.pos.y));
+
+        int total_height = p2.y - p0.y;
 
         // Barycentric coordinates
         VEC3 bry0 = v1.pos - v0.pos;
@@ -130,36 +135,36 @@ void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR
 
         for (int i = 0; i <= total_height; i++)
         {
-            int y = int(v0.pos.y)+i;
+            int y = int(p0.y)+i;
 
             if(y<0 || y>=rs.frameHeight) continue;
 
-            bool  second_half = (y > v1.pos.y || v1.pos.y == v0.pos.y);
+            bool  second_half = (y > p1.y || p1.y == p0.y);
             float segment_height, alpha = 1.0f, beta = 1.0f;
 
             int a, b;
 
             if(total_height>0) alpha = (float)i / (float)total_height;
-            a = int(v0.pos.x + (v2.pos.x - v0.pos.x) * alpha);
+            a = int(p0.x + (p2.x - p0.x) * alpha);
 
             if(second_half)
             {
-                segment_height = ceil(v2.pos.y - v1.pos.y);
-                if(segment_height > 0.0f) beta = (float)(y - v1.pos.y) / segment_height;
-                b = int(v1.pos.x + (v2.pos.x - v1.pos.x) * beta);
+                segment_height = p2.y - p1.y;
+                if(segment_height > 0.0f) beta = (float)(y - p1.y) / segment_height;
+                b = int(p1.x + (p2.x - p1.x) * beta);
             }
             else
             {
-                segment_height = ceil(v1.pos.y - v0.pos.y);
+                segment_height = p1.y - p0.y;
                 if(segment_height > 0.0f) beta = (float)(i) / segment_height;
-                b = int(v0.pos.x + (v1.pos.x - v0.pos.x) * beta);
+                b = int(p0.x + (p1.x - p0.x) * beta);
             }
 
             if (a > b) SWAP(a, b);
 
             unsigned long incr = (a + y * rs.frameWidth);
 
-            for (int x = a; x < b; x++)
+            for (int x = a; x <= b; x++)
             {
                 if(x<0 || x>=rs.frameWidth) { incr++; continue; }
 
