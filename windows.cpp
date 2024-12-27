@@ -119,6 +119,8 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
             mousePressed = GetAsyncKeyState(VK_LBUTTON);
             GetCursorPos(&mousePoint);
 
+            //keyPressed=0;
+            //while(keyPressed==0 || keyPressed==128)
             for (keyPressed=0; keyPressed<128; keyPressed++) if (GetAsyncKeyState(keyPressed) & (1<<15)) break;
             updateCamera(keyPressed, mousePressed, mousePoint.x, mousePoint.y);
 

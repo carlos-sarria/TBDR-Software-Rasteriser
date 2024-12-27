@@ -2,6 +2,8 @@
 #include "log.h"
 #include <stdlib.h>
 
+#define COLOR_DEBUG 0
+
 struct TR_VERTEX
 {
     VEC3 pos;
@@ -26,6 +28,8 @@ struct RENDER_STATE
     MATRIX viewMatrix;
 } rs;
 
+unsigned int colors[] = {0xFFFF0000,0xFF00FF00,0xFF0000FF,0xFFFFFF00,0xFFFF00FF,0xFF00FFFF};
+unsigned int currColor = 0;
 
 void rasterSetWorldMatrix(MATRIX m) { rs.worldMatrix = m; }
 
@@ -56,6 +60,11 @@ void rasterClear(unsigned int color, float depth)
         rs.depthBuffer[i]= 0.0f;
         rs.colorBuffer[i] = 0x00000000;
     }
+
+#if COLOR_DEBUG
+    currColor = 0;
+    srand(0);
+#endif
 }
 
 void rasterSetMaterial(TEXTURE texture)
@@ -66,7 +75,7 @@ void rasterSetMaterial(TEXTURE texture)
 #define GUARDBAND 0.0f
 inline bool rasterCulling (VEC3 v0, VEC3 v1, VEC3 v2)
 {
-    // Backface culling: sign = ab.x*ac.y - ac.x*ab.y;
+    // Backface culling: sign = ab*ac.y - ac.x*ab.y;
     if((v0.x-v1.x)*(v0.y-v2.y) - (v0.x-v2.x)*(v0.y-v1.y) >= 0.0f) return true;
 
     // Depth culling (front plane only) TODO: Front plane clipping
@@ -89,10 +98,12 @@ inline bool rasterCulling (VEC3 v0, VEC3 v1, VEC3 v2)
 #define DOT(v0,v1) (v0.x*v1.x+v0.y*v1.y)
 void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR_VERTEX *meshTVB)
 {
-    unsigned int frameArea = rs.frameWidth*rs.frameHeight;
-
     for (int indexCount = 0; indexCount < numIndices;)
     {
+#if COLOR_DEBUG
+        float debugShade = float(rand()%128)/255.0f+0.5f;
+#endif
+
         unsigned short in0 = indices[indexCount++];
         unsigned short in1 = indices[indexCount++];
         unsigned short in2 = indices[indexCount++];
@@ -117,41 +128,38 @@ void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR
         float d11 = DOT(bry1, bry1);
         float invD = 1.0 / (d00 * d11 - d01 * d01);
 
-        for (int i = 0; i < total_height; i++)
+        for (int i = 0; i <= total_height; i++)
         {
             int y = int(v0.pos.y)+i;
 
             if(y<0 || y>=rs.frameHeight) continue;
 
-            bool  second_half = (i > v1.pos.y - v0.pos.y || v1.pos.y == v0.pos.y);
+            bool  second_half = (y > v1.pos.y || v1.pos.y == v0.pos.y);
             float segment_height, alpha = 1.0f, beta = 1.0f;
 
-            VEC2INT  A, B;
+            int a, b;
 
             if(total_height>0) alpha = (float)i / (float)total_height;
-            A.x = int(v0.pos.x + (v2.pos.x - v0.pos.x) * alpha);
-            A.y = int(v0.pos.y + (v2.pos.y - v0.pos.y) * alpha);
+            a = int(v0.pos.x + (v2.pos.x - v0.pos.x) * alpha);
 
             if(second_half)
             {
-                segment_height = v2.pos.y - v1.pos.y;
+                segment_height = ceil(v2.pos.y - v1.pos.y);
                 if(segment_height > 0.0f) beta = (float)(y - v1.pos.y) / segment_height;
-                B.x = int(v1.pos.x + (v2.pos.x - v1.pos.x) * beta);
-                B.y = int(v1.pos.y + (v2.pos.y - v1.pos.y) * beta);
+                b = int(v1.pos.x + (v2.pos.x - v1.pos.x) * beta);
             }
             else
             {
-                segment_height = v1.pos.y - v0.pos.y;
+                segment_height = ceil(v1.pos.y - v0.pos.y);
                 if(segment_height > 0.0f) beta = (float)(i) / segment_height;
-                B.x = int(v0.pos.x + (v1.pos.x - v0.pos.x) * beta);
-                B.y = int(v0.pos.y + (v1.pos.y - v0.pos.y) * beta);
+                b = int(v0.pos.x + (v1.pos.x - v0.pos.x) * beta);
             }
 
-            if (A.x > B.x) { SWAP(A.x, B.x); SWAP(A.y, B.y);}
+            if (a > b) SWAP(a, b);
 
-            unsigned long incr = (A.x + y * rs.frameWidth);
+            unsigned long incr = (a + y * rs.frameWidth);
 
-            for (int x = A.x; x <= B.x; x++)
+            for (int x = a; x < b; x++)
             {
                 if(x<0 || x>=rs.frameWidth) { incr++; continue; }
 
@@ -165,7 +173,7 @@ void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR
 
                 float depth = v0.pos.z*u + v1.pos.z*v + v2.pos.z*w;
 
-                if(depth>=rs.depthBuffer[incr])
+                if(depth>=rs.depthBuffer[incr]) // Depth comparison
                 {
                     // Update the depth buffer with the new value
                     rs.depthBuffer[incr] = depth;
@@ -176,9 +184,14 @@ void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR
 
                     // Smooth shading
                     float Shade = (v0.intensity*u + v1.intensity*v + v2.intensity*w)  / depth;
-
+#if COLOR_DEBUG
+                    Shade = debugShade;
+#endif
                     // Draw the pixel on the screen buffer
                     unsigned int c = rs.texture.data[texU+texV*rs.texture.width];
+#if COLOR_DEBUG
+                    c = colors[currColor%6];
+#endif
                     unsigned int r = int((float)(c>>16&0xFF)*Shade);
                     unsigned int g = int((float)(c>>8&0xFF)*Shade);
                     unsigned int b = int((float)(c&0xFF)*Shade);
@@ -230,6 +243,10 @@ void rasterSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsi
 
     rasterTransform (vertices, numVertices, meshTVB);
     rasterRasterize (indices, numIndices, meshTVB);
+
+#if COLOR_DEBUG
+    currColor++;
+#endif
 
     free(meshTVB);
 }
