@@ -14,6 +14,25 @@ static const float fIdentity[16] = {
     0.0f, 0.0f, 0.0f, 1.0f
 };
 
+class VEC2INT  // Used for screen coordinates
+{
+public:
+    int x;
+    int y;
+
+    VEC2INT() { x= 0; y = 0; }
+    VEC2INT(int in_x, float in_y) { x=in_x; y=in_y; }
+    VEC2INT(const VEC2INT &inV2) { x= inV2.x; y = inV2.y; }
+
+    VEC2INT operator = (const VEC2INT& inV2) { x = inV2.x; y = inV2.y; return *this;}
+    bool operator == (const VEC2INT& inV2) { return (x == inV2.x && y == inV2.y); }
+    VEC2INT operator + (const VEC2INT& inV2)  const { return VEC2INT(x+inV2.x, y+inV2.y); }
+    VEC2INT operator - (const VEC2INT& inV2)  const { return VEC2INT(x-inV2.x, y-inV2.y); }
+
+    float lenght() { return sqrt(x*x+y*y); }
+    VEC2INT  normalize() { float l = lenght(); if(l==0.0f) { x = x/l;  y=y/l; }; return *this;}
+} ;
+
 class VEC2
 {
 public:

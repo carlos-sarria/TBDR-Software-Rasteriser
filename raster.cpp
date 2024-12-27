@@ -14,8 +14,8 @@ struct RENDER_STATE
     float  *depthBuffer;
     unsigned long *colorBuffer;
 
-    unsigned int width;
-    unsigned int height;
+    unsigned int frameWidth;
+    unsigned int frameHeight;
 
     TEXTURE texture;
 
@@ -37,9 +37,9 @@ void rasterSetLight(VEC3 pos) { rs.lightPosition = pos;};
 
 void rasterInitialise(const int &width, const int &height, void *debugBuffer)
 {
-    rs.width = width;
-    rs.height = height;
-    rs.depthBuffer = (float *) malloc(rs.width*rs.height*sizeof(float));
+    rs.frameWidth = width;
+    rs.frameHeight = height;
+    rs.depthBuffer = (float *) malloc(rs.frameWidth*rs.frameHeight*sizeof(float));
     rs.colorBuffer = (unsigned long *)debugBuffer;
 }
 
@@ -50,7 +50,7 @@ void rasterRelease()
 
 void rasterClear(unsigned int color, float depth)
 {
-    unsigned int i = rs.width*rs.height;
+    unsigned int i = rs.frameWidth*rs.frameHeight;
     while(i--)
     {
         rs.depthBuffer[i]= 0.0f;
@@ -64,102 +64,114 @@ void rasterSetMaterial(TEXTURE texture)
 }
 
 #define GUARDBAND 0.0f
-inline bool rasterCulling (VEC3 t0, VEC3 t1, VEC3 t2)
+inline bool rasterCulling (VEC3 v0, VEC3 v1, VEC3 v2)
 {
     // Backface culling: sign = ab.x*ac.y - ac.x*ab.y;
-    if((t0.x-t1.x)*(t0.y-t2.y) - (t0.x-t2.x)*(t0.y-t1.y) >= 0.0f) return true;
-
-    // Visibility check
-    // If there is at least one vertex inside, then the triangle is visible
-    // This will not work with some triangles visible but with all vertices ouitside
-    // if(t0.x>-GUARDBAND && t0.x<rs.width+GUARDBAND && t0.y>-GUARDBAND && t0.y<rs.height+GUARDBAND) return false;
-    // if(t1.x>-GUARDBAND && t1.x<rs.width+GUARDBAND && t1.y>-GUARDBAND && t1.y<rs.height+GUARDBAND) return false;
-    // if(t2.x>-GUARDBAND && t2.x<rs.width+GUARDBAND && t2.y>-GUARDBAND && t2.y<rs.height+GUARDBAND) return false;
-    // return true; // Triangle fully outside the screen
+    if((v0.x-v1.x)*(v0.y-v2.y) - (v0.x-v2.x)*(v0.y-v1.y) >= 0.0f) return true;
 
     return false;
 }
 
-#define dot(v0,v1) (v0.x*v1.x+v0.y*v1.y)
+#define SWAP(a,b) {int temp; temp=a; a=b; b=temp;}
+#define DOT(v0,v1) (v0.x*v1.x+v0.y*v1.y)
 void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR_VERTEX *meshTVB)
 {
-    unsigned int frameArea = rs.width*rs.height;
+    unsigned int frameArea = rs.frameWidth*rs.frameHeight;
 
-    for (int idx = 0; idx < numIndices;)
+    for (int indexCount = 0; indexCount < numIndices;)
     {
-        TR_VERTEX v0 = meshTVB[indices[idx++]];
-        TR_VERTEX v1 = meshTVB[indices[idx++]];
-        TR_VERTEX v2 = meshTVB[indices[idx++]];
+        unsigned short in0 = indices[indexCount++];
+        unsigned short in1 = indices[indexCount++];
+        unsigned short in2 = indices[indexCount++];
 
-        if (rasterCulling(v0.pos, v1.pos, v2.pos)) continue;
+        if (rasterCulling(meshTVB[in0].pos, meshTVB[in1].pos, meshTVB[in2].pos)) continue;
 
-        if (v0.pos.y > v1.pos.y) std::swap(v0, v1);
-        if (v0.pos.y > v2.pos.y) std::swap(v0, v2);
-        if (v1.pos.y > v2.pos.y) std::swap(v1, v2);
+        if (meshTVB[in0].pos.y > meshTVB[in1].pos.y) SWAP(in0, in1);
+        if (meshTVB[in0].pos.y > meshTVB[in2].pos.y) SWAP(in0, in2);
+        if (meshTVB[in1].pos.y > meshTVB[in2].pos.y) SWAP(in1, in2);
 
-        VEC3 t0 = v0.pos, t1 = v1.pos, t2 = v2.pos;
-        int total_height = t2.y - t0.y;
+        TR_VERTEX v0 = meshTVB[in0];
+        TR_VERTEX v1 = meshTVB[in1];
+        TR_VERTEX v2 = meshTVB[in2];
+
+        int total_height = v2.pos.y - v0.pos.y;
 
         // Barycentric coordinates
-        VEC3 bry0 = t1 - t0, bry1 = t2 - t0;
-        float d00 = dot(bry0, bry0);
-        float d01 = dot(bry0, bry1);
-        float d11 = dot(bry1, bry1);
-        float invDenom = 1.0 / (d00 * d11 - d01 * d01);
+        VEC3 bry0 = v1.pos - v0.pos;
+        VEC3 bry1 = v2.pos - v0.pos;
+        float d00 = DOT(bry0, bry0);
+        float d01 = DOT(bry0, bry1);
+        float d11 = DOT(bry1, bry1);
+        float invD = 1.0 / (d00 * d11 - d01 * d01);
 
         for (int i = 0; i < total_height; i++)
         {
-            bool second_half = i > t1.y - t0.y || t1.y == t0.y;
-            int segment_height = second_half ? t2.y - t1.y : t1.y - t0.y;
-            float alpha = (float)i / total_height;
-            float beta = (float)(i - (second_half ? t1.y - t0.y : 0)) / segment_height;
+            int y = int(v0.pos.y)+i;
+            if(y<0 || y>=rs.frameHeight) continue;
 
-            int Ax, Ay, Bx, By;
-            Ax = int(t0.x + (t2.x - t0.x) * alpha);
-            Ay = int(t0.y + (t2.y - t0.y) * alpha);
-            Bx = int(second_half ? t1.x + (t2.x - t1.x) * beta : t0.x + (t1.x - t0.x) * beta);
-            By = int(second_half ? t1.y + (t2.y - t1.y) * beta : t0.y + (t1.y - t0.y) * beta);
-            if (Ax > Bx) { std::swap(Ax, Bx); std::swap(Ay, By);}
+            bool  second_half = (i > v1.pos.y - v0.pos.y || v1.pos.y == v0.pos.y);
+            float segment_height, alpha = 1.0f, beta = 1.0f;
 
-            unsigned long incr = (Ax + ((int)t0.y + i) * rs.width);
-            if(incr < frameArea) // ??
+            VEC2INT  A, B;
+
+            if(total_height>0) alpha = (float)i / (float)total_height;
+            A.x = int(v0.pos.x + (v2.pos.x - v0.pos.x) * alpha);
+            A.y = int(v0.pos.y + (v2.pos.y - v0.pos.y) * alpha);
+
+            if(second_half)
             {
-                for (int x = Ax; x <= Bx; x++)
+                segment_height = v2.pos.y - v1.pos.y;
+                if(segment_height > 0.0f) beta = (float)(y - v1.pos.y) / segment_height;
+                B.x = int(v1.pos.x + (v2.pos.x - v1.pos.x) * beta);
+                B.y = int(v1.pos.y + (v2.pos.y - v1.pos.y) * beta);
+            }
+            else
+            {
+                segment_height = v1.pos.y - v0.pos.y;
+                if(segment_height > 0.0f) beta = (float)(i) / segment_height;
+                B.x = int(v0.pos.x + (v1.pos.x - v0.pos.x) * beta);
+                B.y = int(v0.pos.y + (v1.pos.y - v0.pos.y) * beta);
+            }
+
+            if (A.x > B.x) { SWAP(A.x, B.x); SWAP(A.y, B.y);}
+
+            unsigned long incr = (A.x + y * rs.frameWidth);
+
+            for (int x = A.x; x <= B.x; x++)
+            {
+                if(x<0 || x>=rs.frameWidth) { incr++; continue; }
+
+                VEC3 p(x, i+v0.pos.y, 0.0f);
+                VEC3 bry2 = p - v0.pos;
+                float d20 = DOT(bry2, bry0);
+                float d21 = DOT(bry2, bry1);
+                float v = (d11 * d20 - d01 * d21) * invD;
+                float w = (d00 * d21 - d01 * d20) * invD;
+                float u = 1.0f - v - w;
+
+                float depth = v0.pos.z*u + v1.pos.z*v + v2.pos.z*w;
+
+                if(depth>=rs.depthBuffer[incr])
                 {
-                    if(x>=0 && x<rs.width && incr < frameArea)
-                    {
-                        VEC3 p(x, i+t0.y, 0.0f);
-                        VEC3 bry2 = p - t0;
-                        float d20 = dot(bry2, bry0);
-                        float d21 = dot(bry2, bry1);
-                        float v = (d11 * d20 - d01 * d21) * invDenom;
-                        float w = (d00 * d21 - d01 * d20) * invDenom;
-                        float u = 1.0f - v - w;
+                    // Update the depth buffer with the new value
+                    rs.depthBuffer[incr] = depth;
 
-                        float depth = v0.pos.z*u + v1.pos.z*v + v2.pos.z*w;
+                    // Perspective correct texture coordinates
+                    unsigned int texU = (unsigned int)((v0.uv.u*u + v1.uv.u*v + v2.uv.u*w) * rs.texture.width / depth) % rs.texture.width;
+                    unsigned int texV = (unsigned int)((v0.uv.v*u + v1.uv.v*v + v2.uv.v*w) * rs.texture.width / depth) % rs.texture.height;
 
-                        if(depth>=rs.depthBuffer[incr])
-                        {
-                            // Update the depth buffer with the new value
-                            rs.depthBuffer[incr] = depth;
+                    // Smooth shading
+                    float Shade = (v0.intensity*u + v1.intensity*v + v2.intensity*w)  / depth;
 
-                            // Perspective correct texture coordinates
-                            unsigned int texU = (unsigned int)((v0.uv.u*u + v1.uv.u*v + v2.uv.u*w) * rs.texture.width / depth) % rs.texture.width;
-                            unsigned int texV = (unsigned int)((v0.uv.v*u + v1.uv.v*v + v2.uv.v*w) * rs.texture.width / depth) % rs.texture.height;
-
-                            // Smooth shading
-                            float Shade = (v0.intensity*u + v1.intensity*v + v2.intensity*w)  / depth;
-
-                            // Draw the pixel on the screen buffer
-                            unsigned int c = rs.texture.data[texU+texV*rs.texture.width];
-                            unsigned int r = int((float)(c>>16&0xFF)*Shade);
-                            unsigned int g = int((float)(c>>8&0xFF)*Shade);
-                            unsigned int b = int((float)(c&0xFF)*Shade);
-                            rs.colorBuffer[incr] = 0xFF<<24|r<<16|g<<8|b;
-                        }
-                    }
-                    incr++;
+                    // Draw the pixel on the screen buffer
+                    unsigned int c = rs.texture.data[texU+texV*rs.texture.width];
+                    unsigned int r = int((float)(c>>16&0xFF)*Shade);
+                    unsigned int g = int((float)(c>>8&0xFF)*Shade);
+                    unsigned int b = int((float)(c&0xFF)*Shade);
+                    rs.colorBuffer[incr] = 0xFF<<24|r<<16|g<<8|b;
                 }
+
+                incr++;
             }
         }
     }
@@ -187,8 +199,8 @@ void rasterTransform (VERTEX *v, const unsigned int &numVertices, TR_VERTEX *mes
         float shade = (v[i].nor.x*light.x + v[i].nor.y*light.y + v[i].nor.z*light.z) * 0.5 + 0.5f;
 
         float div = 1.0f/out.z;
-        meshTVB[i].pos.x = out.x * div * (rs.width/2) + rs.width/2;
-        meshTVB[i].pos.y = out.y * div * (rs.width/2) + rs.height/2;
+        meshTVB[i].pos.x = out.x * div * (rs.frameWidth/2) + rs.frameWidth/2;
+        meshTVB[i].pos.y = out.y * div * (rs.frameWidth/2) + rs.frameHeight/2;
         meshTVB[i].pos.z = div;
 
         meshTVB[i].uv.u = v[i].uv.u * div;
