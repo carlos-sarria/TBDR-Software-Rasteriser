@@ -69,6 +69,19 @@ inline bool rasterCulling (VEC3 v0, VEC3 v1, VEC3 v2)
     // Backface culling: sign = ab.x*ac.y - ac.x*ab.y;
     if((v0.x-v1.x)*(v0.y-v2.y) - (v0.x-v2.x)*(v0.y-v1.y) >= 0.0f) return true;
 
+    // Depth culling (front plane only) TODO: Front plane clipping
+    if(v0.z<0.0f && v1.z<0.0f && v2.z<0.0f) return true;
+
+    // Bounding box check (out-of-the-screen)
+    VEC2INT BB_A( (v0.x>v1.x) ? (v0.x>v2.x) ? v0.x:v2.x:v1.x , (v0.y>v1.y) ? (v0.y>v2.y) ? v0.y:v2.y:v1.y);
+    VEC2INT BB_B( (v0.x<v1.x) ? (v0.x<v2.x) ? v0.x:v2.x:v1.x , (v0.y<v1.y) ? (v0.y<v2.y) ? v0.y:v2.y:v1.y);
+    VEC2INT BB_C( (BB_A.x + BB_B.x)/2, (BB_A.y + BB_B.y)/2);
+    VEC2INT BB_D( abs(BB_A.x - BB_B.x)/2, abs(BB_A.y - BB_B.y)/2);
+    VEC2INT BB_S (rs.frameWidth/2, rs.frameHeight/2);
+
+    if( abs(BB_S.x-BB_C.x)>(BB_S.x+BB_D.x) &&
+        abs(BB_S.y-BB_C.y)>(BB_S.y+BB_D.y) ) return true;
+
     return false;
 }
 
@@ -107,6 +120,7 @@ void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR
         for (int i = 0; i < total_height; i++)
         {
             int y = int(v0.pos.y)+i;
+
             if(y<0 || y>=rs.frameHeight) continue;
 
             bool  second_half = (i > v1.pos.y - v0.pos.y || v1.pos.y == v0.pos.y);
