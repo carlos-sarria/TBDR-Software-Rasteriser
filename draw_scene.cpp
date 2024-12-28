@@ -119,7 +119,7 @@ void draw_frame ()
         mModel.scaling(mesh.transform.scale.x, mesh.transform.scale.y, mesh.transform.scale.z);
         mModel.rotationQ(mesh.transform.rotation);
         mModel.translation(mesh.transform.translation.x, mesh.transform.translation.y, mesh.transform.translation.z);
-        mModel.rotationZ(angle); // mModel.rotationX(angle/2.0f);// FOR TESTING
+        //mModel.rotationZ(angle); // mModel.rotationX(angle/2.0f);// FOR TESTING
 
         rasterSetWorldMatrix(mModel);
         rasterSetViewMatrix(mView);

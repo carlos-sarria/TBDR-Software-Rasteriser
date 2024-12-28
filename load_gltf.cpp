@@ -4,6 +4,8 @@
 
 SCENE gltfScene;
 
+inline bool isPowerOfTwo(unsigned int x){return (x & (x - 1)) == 0;}
+
 bool loadDDS(const char* textureFileName, TEXTURE& texture)
 {
     FILE* textureFile;
@@ -29,11 +31,15 @@ bool loadDDS(const char* textureFileName, TEXTURE& texture)
 
     if (ddsktx_parse(&tc, fileData, fileSize, NULL))
     {
+        if (!isPowerOfTwo(tc.height) || !isPowerOfTwo(tc.width))
+        {
+            apiLog("Sorry only power of two textures % is (%d, %d)\n",textureFileName,tc.width,tc.height);
+            return false;
+        }
         if(tc.num_mips>0)
         {
             for (int mip = 0; mip < tc.num_mips; mip++)
             {
-
                 ddsktx_sub_data sub_data;
                 ddsktx_get_sub(&tc, &sub_data, fileData, fileSize, 0, 0, mip);
                 texture.data = (unsigned int *)malloc(sub_data.size_bytes);

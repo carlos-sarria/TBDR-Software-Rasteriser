@@ -89,6 +89,46 @@ inline bool rasterCulling (VEC3 v0, VEC3 v1, VEC3 v2)
 
 #define SWAP(a,b) {int temp; temp=a; a=b; b=temp;}
 #define DOT(v0,v1) (v0.x*v1.x+v0.y*v1.y)
+
+inline unsigned int intensity (unsigned int color, float intensity)
+{
+    unsigned int c = color;
+    unsigned int r = (unsigned int)((float)(c>>16&0xFF)*intensity);
+    unsigned int g = (unsigned int)((float)(c>>8&0xFF)*intensity);
+    unsigned int b = (unsigned int)((float)(c&0xFF)*intensity);
+    c = 0xFF<<24|r<<16|g<<8|b;
+
+    return c;
+}
+
+// Barycentric coordinates. Cramer's rule to solve linear systems
+inline void barycentric (VEC3 v0, VEC3 v1, VEC3 v2, VEC3 a, VEC3 b, VEC3 &by1, VEC3 &by2, VEC3 &by_incr)
+{
+    VEC3 br0 = v1 - v0;
+    VEC3 br1 = v2 - v0;
+    float d00 = DOT(br0, br0);
+    float d01 = DOT(br0, br1);
+    float d11 = DOT(br1, br1);
+    float invD = 1.0 / (d00 * d11 - d01 * d01);
+
+    VEC3 br2 = a - v0;
+    float d20 = DOT(br2, br0);
+    float d21 = DOT(br2, br1);
+    by1.y = (d11 * d20 - d01 * d21) * invD;
+    by1.z = (d00 * d21 - d01 * d20) * invD;
+    by1.x = 1.0f - by1.y - by1.z;
+
+    VEC3 br3 = b - v0;
+    float d30 = DOT(br3, br0);
+    float d31 = DOT(br3, br1);
+    by2.y = (d11 * d30 - d01 * d31) * invD;
+    by2.z = (d00 * d31 - d01 * d30) * invD;
+    by2.x = 1.0f - by2.y - by2.z;
+
+    float d = 1.0f/float(b.x-a.x);
+    by_incr = (by2-by1)*d;
+}
+
 void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR_VERTEX *meshTVB)
 {
     for (int indexCount = 0; indexCount < numIndices;)
@@ -109,79 +149,87 @@ void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR
 
         int total_height = v2.pos.y - v0.pos.y;
 
-        // Barycentric coordinates
-        VEC3 bry0 = v1.pos - v0.pos;
-        VEC3 bry1 = v2.pos - v0.pos;
-        float d00 = DOT(bry0, bry0);
-        float d01 = DOT(bry0, bry1);
-        float d11 = DOT(bry1, bry1);
-        float invD = 1.0 / (d00 * d11 - d01 * d01);
-
         for (int i = 0; i <= total_height; i++)
         {
             int y = int(v0.pos.y)+i;
 
             if(y<0 || y>=rs.frameHeight) continue;
 
-            bool  is_bottom_half = (y > v1.pos.y || v1.pos.y == v0.pos.y);
-            float height, alpha = 1.0f, beta = 1.0f;
+            float alpha = 1.0f, beta = 1.0f;
 
             int a, b;
 
             if(total_height>0) alpha = (float)i / (float)total_height;
             a = int(v0.pos.x + (v2.pos.x - v0.pos.x) * alpha);
 
-            if(is_bottom_half)
+            if(y > v1.pos.y || v1.pos.y == v0.pos.y) // bottom half of the triangle
             {
-                height = ceil(v2.pos.y - v1.pos.y);
-                if(height > 0.0f) beta = (float)(y - v1.pos.y) / height;
+                float h = v2.pos.y - v1.pos.y;
+                if(h > 0.0f) beta = (float)(y - v1.pos.y) / h;
                 b = int(v1.pos.x + (v2.pos.x - v1.pos.x) * beta);
             }
             else
             {
-                height = ceil(v1.pos.y - v0.pos.y);
-                if(height > 0.0f) beta = (float)(i) / height;
+                float h = v1.pos.y - v0.pos.y;
+                if(h > 0.0f) beta = (float)(i) / h;
                 b = int(v0.pos.x + (v1.pos.x - v0.pos.x) * beta);
             }
 
             if (a > b) SWAP(a, b);
 
+            float d = 1.0f/float(b-a);
+
+            VEC3 vA(a,y,0.0f), vB(b,y,0.0f), by, byB, by_incr;
+            barycentric (v0.pos, v1.pos, v2.pos, vA, vB, by, byB, by_incr);
+
+            float depth =  v0.pos.z*by.x + v1.pos.z*by.y + v2.pos.z*by.z;
+            float depthB =  v0.pos.z*byB.x + v1.pos.z*byB.y + v2.pos.z*byB.z;
+            float depth_incr = (depthB-depth)*d;
+
+            float invD = 1.0f/depth;
+            float texU = ((v0.uv.u*by.x + v1.uv.u*by.y + v2.uv.u*by.z) * rs.texture.width / depth);
+            float texUB = ((v0.uv.u*byB.x + v1.uv.u*byB.y + v2.uv.u*byB.z) * rs.texture.width / depthB);
+            float texU_incr = (texUB-texU)*d;
+
+            float texV = ((v0.uv.v*by.x + v1.uv.v*by.y + v2.uv.v*by.z) * rs.texture.width / depth);
+            float texVB = ((v0.uv.v*byB.x + v1.uv.v*byB.y + v2.uv.v*byB.z) * rs.texture.height / depthB);
+            float texV_incr = (texVB-texV)*d;
+
+            float shade = (v0.intensity*by.x + v1.intensity*by.y + v2.intensity*by.z) * invD;
+            float shadeB = (v0.intensity*byB.x + v1.intensity*byB.y + v2.intensity*byB.z) * invD;
+            float shade_incr = (shadeB-shade)*d;
+
             unsigned long incr = (a + y * rs.frameWidth);
 
             for (int x = a; x <= b; x++)
             {
-                if(x<0 || x>=rs.frameWidth) { incr++; continue; }
-
-                VEC3 p(x, i+v0.pos.y, 0.0f);
-                VEC3 bry2 = p - v0.pos;
-                float d20 = DOT(bry2, bry0);
-                float d21 = DOT(bry2, bry1);
-                float v = (d11 * d20 - d01 * d21) * invD;
-                float w = (d00 * d21 - d01 * d20) * invD;
-                float u = 1.0f - v - w;
-
-                float depth = v0.pos.z*u + v1.pos.z*v + v2.pos.z*w;
-
-                if(depth>=rs.depthBuffer[incr]) // Depth comparison
+                if(x>=0 && x<rs.frameWidth)
                 {
-                    // Update the depth buffer with the new value
-                    rs.depthBuffer[incr] = depth;
+                    if(depth>=rs.depthBuffer[incr]) // Depth comparison GREATER-EQUAL
+                    {
+                        // Update the depth buffer with the new value
+                        rs.depthBuffer[incr] = depth;
 
-                    // Perspective correct texture coordinates
-                    unsigned int texU = (unsigned int)((v0.uv.u*u + v1.uv.u*v + v2.uv.u*w) * rs.texture.width / depth) % rs.texture.width;
-                    unsigned int texV = (unsigned int)((v0.uv.v*u + v1.uv.v*v + v2.uv.v*w) * rs.texture.width / depth) % rs.texture.height;
+                        // Perspective correct texture coordinates
+                        unsigned int texU_int = (unsigned int)(texU) & (rs.texture.width-1);
+                        unsigned int texV_int = (unsigned int)(texV) & (rs.texture.height-1);
 
-                    // Smooth shading
-                    float Shade = (v0.intensity*u + v1.intensity*v + v2.intensity*w)  / depth;
-
-                    // Draw the pixel on the screen buffer
-                    unsigned int c = rs.texture.data[texU+texV*rs.texture.width];
-                    unsigned int r = int((float)(c>>16&0xFF)*Shade);
-                    unsigned int g = int((float)(c>>8&0xFF)*Shade);
-                    unsigned int b = int((float)(c&0xFF)*Shade);
-                    rs.colorBuffer[incr] = 0xFF<<24|r<<16|g<<8|b;
+                        // Draw the pixel on the screen buffer
+#if 1
+                        rs.colorBuffer[incr] = intensity (rs.texture.data[texU_int+texV_int*rs.texture.width], shade);
+#else
+                        rs.colorBuffer[incr] = rs.texture.data[texU_int+texV_int*rs.texture.width];
+#endif
+                    }
                 }
 
+                by.x += by_incr.x;
+                by.y += by_incr.y;
+                by.z += by_incr.z;
+                depth += depth_incr;
+                texU += texU_incr;
+                texV += texV_incr;
+                shade += shade_incr;
                 incr++;
             }
         }
