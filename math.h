@@ -78,8 +78,8 @@ public:
 
     float lenght() { return sqrt(x*x+y*y+z*z); }
     VEC3&  normalize() { float l = lenght(); if(l!=0.0f){ x = x/l;  y=y/l; z=z/l; }; return *this;}
-    float dotProduct(const VEC3 &inV3) {return (x*inV3.x + y*inV3.y + z*inV3.z);}
-    const VEC3  crossProduct(const VEC3 &inV3) { VEC3 vOut; vOut.x = y * inV3.z - z * inV3.y; vOut.y = z * inV3.x - x * inV3.z; vOut.z = x * inV3.y - y * inV3.x; return vOut; }
+    float dot(const VEC3 &inV3) {return (x*inV3.x + y*inV3.y + z*inV3.z);}
+    const VEC3  cross(const VEC3 &inV3) { VEC3 vOut; vOut.x = y * inV3.z - z * inV3.y; vOut.y = z * inV3.x - x * inV3.z; vOut.z = x * inV3.y - y * inV3.x; return vOut; }
 };
 
 class QUATERNION
@@ -418,9 +418,9 @@ void lookAtLH(const VEC3 &vEye, const VEC3 &vAt, const VEC3 &vUp)
     f.z = vEye.z - vAt.z;
 
     f.normalize();
-    s = f.crossProduct(vUp);
+    s = f.cross(vUp);
     s.normalize();
-    u = s.crossProduct(f);
+    u = s.cross(f);
     u.normalize();
 
     mOut.f[ 0] = s.x;
@@ -457,17 +457,17 @@ void lookAtRH(const VEC3 &vEye, const VEC3 &vAt, const VEC3 &vUp)
     f.z = vAt.z - vEye.z;
 
     f.normalize();
-    s = f.crossProduct(vUp);
+    s = f.cross(vUp);
     s.normalize();
-    u = s.crossProduct(f);
+    u = s.cross(f);
     u.normalize();
 
     // Fix for when vectors are parallel
     if (s.x==0.0f && s.y==0.0f && s.z==0.0f){
             VEC3 newUp = {vUp.x+0.0000001f,vUp.y+0.0000001f,vUp.z+0.0000001f};
-            s = f.crossProduct(newUp);
+            s = f.cross(newUp);
             s.normalize();
-            u = s.crossProduct(f);
+            u = s.cross(f);
             u.normalize();
     }
 

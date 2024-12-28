@@ -65,7 +65,6 @@ void rasterSetMaterial(TEXTURE texture)
     rs.texture = texture;
 }
 
-#define GUARDBAND 0.0f
 inline bool rasterCulling (VEC3 v0, VEC3 v1, VEC3 v2)
 {
     // Backface culling: sign = ab*ac.y - ac.x*ab.y;
@@ -90,8 +89,10 @@ inline bool rasterCulling (VEC3 v0, VEC3 v1, VEC3 v2)
 #define SWAP(a,b) {int temp; temp=a; a=b; b=temp;}
 #define DOT(v0,v1) (v0.x*v1.x+v0.y*v1.y)
 
+#define CLAMP(v,max,min) v=((v>max)?max:(v<min)?min:v)
 inline unsigned int intensity (unsigned int color, float intensity)
 {
+    CLAMP(intensity,1.0f,0.0f);
     unsigned int c = color;
     unsigned int r = (unsigned int)((float)(c>>16&0xFF)*intensity);
     unsigned int g = (unsigned int)((float)(c>>8&0xFF)*intensity);
@@ -102,7 +103,7 @@ inline unsigned int intensity (unsigned int color, float intensity)
 }
 
 // Barycentric coordinates. Cramer's rule to solve linear systems
-inline void barycentric (VEC3 v0, VEC3 v1, VEC3 v2, VEC3 a, VEC3 b, VEC3 &by1, VEC3 &by2, VEC3 &by_incr)
+inline void barycentric (VEC3 v0, VEC3 v1, VEC3 v2, VEC3 a, VEC3 b, VEC3 &by1, VEC3 &by2)
 {
     VEC3 br0 = v1 - v0;
     VEC3 br1 = v2 - v0;
@@ -124,9 +125,6 @@ inline void barycentric (VEC3 v0, VEC3 v1, VEC3 v2, VEC3 a, VEC3 b, VEC3 &by1, V
     by2.y = (d11 * d30 - d01 * d31) * invD;
     by2.z = (d00 * d31 - d01 * d30) * invD;
     by2.x = 1.0f - by2.y - by2.z;
-
-    float d = 1.0f/float(b.x-a.x);
-    by_incr = (by2-by1)*d;
 }
 
 void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR_VERTEX *meshTVB)
@@ -179,24 +177,30 @@ void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR
 
             float d = 1.0f/float(b-a);
 
-            VEC3 vA(a,y,0.0f), vB(b,y,0.0f), by, byB, by_incr;
-            barycentric (v0.pos, v1.pos, v2.pos, vA, vB, by, byB, by_incr);
+            VEC3 vA(a,y,0.0f), vB(b,y,0.0f), byA, byB;
+            barycentric (v0.pos, v1.pos, v2.pos, vA, vB, byA, byB);
 
-            float depth =  v0.pos.z*by.x + v1.pos.z*by.y + v2.pos.z*by.z;
-            float depthB =  v0.pos.z*byB.x + v1.pos.z*byB.y + v2.pos.z*byB.z;
+            VEC3 vDepth(v0.pos.z, v1.pos.z, v2.pos.z);
+            float depth =  vDepth.dot(byA);
+            float depthB =  vDepth.dot(byB);
             float depth_incr = (depthB-depth)*d;
 
             float invD = 1.0f/depth;
-            float texU = ((v0.uv.u*by.x + v1.uv.u*by.y + v2.uv.u*by.z) * rs.texture.width / depth);
-            float texUB = ((v0.uv.u*byB.x + v1.uv.u*byB.y + v2.uv.u*byB.z) * rs.texture.width / depthB);
+            float invDB = 1.0f/depthB;
+
+            VEC3 vU(v0.uv.u, v1.uv.u, v2.uv.u);
+            float texU = vU.dot(byA) * rs.texture.width * invD;
+            float texUB = vU.dot(byB) * rs.texture.height * invDB;
             float texU_incr = (texUB-texU)*d;
 
-            float texV = ((v0.uv.v*by.x + v1.uv.v*by.y + v2.uv.v*by.z) * rs.texture.width / depth);
-            float texVB = ((v0.uv.v*byB.x + v1.uv.v*byB.y + v2.uv.v*byB.z) * rs.texture.height / depthB);
+            VEC3 vV(v0.uv.v, v1.uv.v, v2.uv.v);
+            float texV = vV.dot(byA) * rs.texture.width * invD;
+            float texVB = vV.dot(byB) * rs.texture.height * invDB;
             float texV_incr = (texVB-texV)*d;
 
-            float shade = (v0.intensity*by.x + v1.intensity*by.y + v2.intensity*by.z) * invD;
-            float shadeB = (v0.intensity*byB.x + v1.intensity*byB.y + v2.intensity*byB.z) * invD;
+            VEC3 vInt(v0.intensity, v1.intensity, v2.intensity);
+            float shade = vInt.dot(byA) * invD;
+            float shadeB = vInt.dot(byB) * invDB;
             float shade_incr = (shadeB-shade)*d;
 
             unsigned long incr = (a + y * rs.frameWidth);
@@ -216,16 +220,13 @@ void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR
 
                         // Draw the pixel on the screen buffer
 #if 1
-                        rs.colorBuffer[incr] = intensity (rs.texture.data[texU_int+texV_int*rs.texture.width], shade);
+                        rs.colorBuffer[incr] = intensity(rs.texture.data[texU_int+texV_int*rs.texture.width], shade);
 #else
                         rs.colorBuffer[incr] = rs.texture.data[texU_int+texV_int*rs.texture.width];
 #endif
                     }
                 }
 
-                by.x += by_incr.x;
-                by.y += by_incr.y;
-                by.z += by_incr.z;
                 depth += depth_incr;
                 texU += texU_incr;
                 texV += texV_incr;
@@ -253,9 +254,8 @@ void rasterTransform (VERTEX *v, const unsigned int &numVertices, TR_VERTEX *mes
         out.y = v[i].pos.x*mMVP.f[1] + v[i].pos.y*mMVP.f[5] + v[i].pos.z*mMVP.f[9]  + 1.0f*mMVP.f[13];
         out.z = v[i].pos.x*mMVP.f[2] + v[i].pos.y*mMVP.f[6] + v[i].pos.z*mMVP.f[10] + 1.0f*mMVP.f[14];
 
-        VEC3 light = transformedLight-v[i].pos;
-        light.normalize();
-        float shade = (v[i].nor.x*light.x + v[i].nor.y*light.y + v[i].nor.z*light.z) * 0.5 + 0.5f;
+        transformedLight.normalize();
+        float shade = v[i].nor.dot(transformedLight) * 0.5 + 0.5f;
 
         float div = 1.0f/out.z;
         meshTVB[i].pos.x = ceil(out.x * div * (rs.frameWidth/2) + rs.frameWidth/2); // ceil = pixel left-top convention
