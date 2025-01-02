@@ -9,6 +9,8 @@ unsigned int SCREEN_HEIGHT = 0;
 extern SCENE gltfScene;
 CAMERA camera;
 
+unsigned int colors[] = {0xFFFF0000,0xFF00FF00,0xFF0000FF,0xFFFFFF00,0xFFFF00FF,0xFF00FFFF,0xFF800000,0xFF008000,0xFF000080};
+
 void initializeCamera()
 {
     // Get the camera (the first one)
@@ -113,6 +115,7 @@ void draw_frame ()
 
     rasterClear(0xFF400000);
 
+    unsigned int mesh_count = 0;
     for(MESH& mesh : gltfScene.meshes)
     {
         //if(mesh.indexCount<100) continue; // avoid floor box
@@ -128,9 +131,18 @@ void draw_frame ()
 
         rasterSetLight(gltfScene.lights[0].transform.translation);
 
-        rasterSetMaterial(gltfScene.textures[mesh.textureID]);
+        MATERIAL material;
+        material.texture = gltfScene.textures[mesh.textureID];
+        //material.texture.data = 0;
+        material.blend_mode = ALPHA;
+        material.factor = 1.0f;
+        material.color = 0x80FFFFFF;//colors[mesh_count&7];
+        material.smooth_shade = true;
+        rasterSetMaterial(material);
 
         rasterSendVertices (mesh.vertexBuffer, mesh.vertexCount, mesh.indexBuffer, mesh.indexCount);
+
+        mesh_count++;
     }
 
     angle += 0.01f;

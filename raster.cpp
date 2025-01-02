@@ -4,7 +4,7 @@
 
 #define SWAP(a,b) {int temp; temp=a; a=b; b=temp;}
 #define DOT(v0,v1) (v0.x*v1.x+v0.y*v1.y)
-#define CLAMP(v,max,min) v=((v>max)?max:(v<min)?min:v)
+#define CLAMP(v,min,max) v=((v>max)?max:(v<min)?min:v)
 
 struct TR_VERTEX
 {
@@ -21,7 +21,7 @@ struct RENDER_STATE
     unsigned int frameWidth;
     unsigned int frameHeight;
 
-    TEXTURE texture;
+    MATERIAL material;
 
     VEC3 lightPosition;
 
@@ -30,7 +30,7 @@ struct RENDER_STATE
     MATRIX viewMatrix;
 } rs;
 
-unsigned int colors[] = {0xFFFF0000,0xFF00FF00,0xFF0000FF,0xFFFFFF00,0xFFFF00FF,0xFF00FFFF,0xFF800000,0xFF008000,0xFF000080};
+unsigned int debug_colors[] = {0xFFFF0000,0xFF00FF00,0xFF0000FF,0xFFFFFF00,0xFFFF00FF,0xFF00FFFF,0xFF800000,0xFF008000,0xFF000080};
 unsigned int currColor = 0;
 
 void rasterSetWorldMatrix(MATRIX m) { rs.worldMatrix = m; }
@@ -47,6 +47,13 @@ void rasterInitialise(const int &width, const int &height, void *debugBuffer)
     rs.frameHeight = height;
     rs.depthBuffer = (float *) malloc(rs.frameWidth*rs.frameHeight*sizeof(float));
     rs.colorBuffer = (unsigned long *)debugBuffer;
+    rs.material.texture.data = 0;
+    rs.material.texture.height = 0;
+    rs.material.texture.width = 0;
+    rs.material.blend_mode = NONE;
+    rs.material.factor = 1.0f;
+    rs.material.color = 0xFFFFFFFF;
+    rs.material.smooth_shade = true;
 }
 
 void rasterRelease()
@@ -64,9 +71,9 @@ void rasterClear(unsigned int color, float depth)
     }
 }
 
-void rasterSetMaterial(TEXTURE texture)
+void rasterSetMaterial(MATERIAL material)
 {
-    rs.texture = texture;
+    rs.material = material;
 }
 
 inline void boundingBox(VEC3 p0, VEC3 p1, VEC3 p2, VEC2INT &a, VEC2INT &b)
@@ -109,18 +116,53 @@ inline bool rasterCulling (VEC3 v0, VEC3 v1, VEC3 v2)
     return false;
 }
 
-inline unsigned int blend (unsigned int mem_pos, unsigned int U, unsigned int V, float intensity)
+inline unsigned int blend (unsigned int mem_pos, unsigned int U, unsigned int V, float shade)
 {
-    unsigned int color = rs.texture.data[U+V*rs.texture.width];
+    unsigned int tex_color;
+    unsigned int source_color;
+    tex_color = (rs.material.texture.data==0) ? rs.material.color : rs.material.texture.data[U+V*rs.material.texture.width];
 
-    CLAMP(intensity,1.0f,0.0f);
-    unsigned int c = color;
-    unsigned int r = (unsigned int)((float)(c>>16&0xFF)*intensity);
-    unsigned int g = (unsigned int)((float)(c>>8&0xFF)*intensity);
-    unsigned int b = (unsigned int)((float)(c&0xFF)*intensity);
-    c = 0xFF<<24|r<<16|g<<8|b;
+    if(rs.material.blend_mode==NONE && rs.material.smooth_shade==false) return tex_color;
 
-    return c;
+    float red =   (float)(tex_color>>16&0xFF);
+    float green = (float)(tex_color>>8&0xFF);
+    float blue =  (float)(tex_color&0xFF);
+
+    if(rs.material.smooth_shade)
+    {
+        CLAMP(shade,0.0f,1.0f);
+        red *= shade;
+        green *= shade;
+        blue *= shade;
+    }
+
+    if(rs.material.blend_mode!=NONE)
+    {
+        source_color = rs.colorBuffer[mem_pos];
+        float s_red =   (float)(source_color>>16&0xFF);
+        float s_green = (float)(source_color>>8&0xFF);
+        float s_blue =  (float)(source_color&0xFF);
+
+        if (rs.material.blend_mode==ADDITIVE)
+        {
+            red   += s_red;
+            green += s_green;
+            blue  += s_blue;
+        }
+
+        if (rs.material.blend_mode==ALPHA)
+        {
+            float alpha = (float)(tex_color>>24&0xFF)*(rs.material.factor/255.0f);
+            float inv_alpha = 1.0f-alpha;
+            red   = alpha * red + inv_alpha * s_red;
+            green = alpha * green + inv_alpha * s_green;
+            blue  = alpha * blue + inv_alpha * s_blue;
+        }
+    }
+
+    unsigned int res_color = 0xFF<<24|int(red)<<16|int(green)<<8|int(blue);
+
+    return res_color;
 }
 
 // Barycentric coordinates. Cramer's rule to solve linear systems
@@ -228,13 +270,13 @@ void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR
             float invDB = 1.0f/depthB;
 
             VEC3 vU(v0.uv.u, v1.uv.u, v2.uv.u);
-            float texU = vU.dot(byA) * rs.texture.width * invD;
-            float texUB = vU.dot(byB) * rs.texture.height * invDB;
+            float texU = vU.dot(byA) * rs.material.texture.width * invD;
+            float texUB = vU.dot(byB) * rs.material.texture.height * invDB;
             float texU_incr = (texUB-texU)*d;
 
             VEC3 vV(v0.uv.v, v1.uv.v, v2.uv.v);
-            float texV = vV.dot(byA) * rs.texture.width * invD;
-            float texVB = vV.dot(byB) * rs.texture.height * invDB;
+            float texV = vV.dot(byA) * rs.material.texture.width * invD;
+            float texVB = vV.dot(byB) * rs.material.texture.height * invDB;
             float texV_incr = (texVB-texV)*d;
 
             VEC3 vInt(v0.intensity, v1.intensity, v2.intensity);
@@ -254,14 +296,14 @@ void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR
                         rs.depthBuffer[incr] = depth;
 
                         // Perspective correct texture coordinates
-                        unsigned int texU_int = (unsigned int)(texU) & (rs.texture.width-1);
-                        unsigned int texV_int = (unsigned int)(texV) & (rs.texture.height-1);
+                        unsigned int texU_int = (unsigned int)(texU) & (rs.material.texture.width-1);
+                        unsigned int texV_int = (unsigned int)(texV) & (rs.material.texture.height-1);
 
                         // Draw the pixel on the screen buffer
 #if 1
                         rs.colorBuffer[incr] = blend(incr, texU_int, texV_int, shade);
 #else
-                        rs.colorBuffer[incr] = rs.texture.data[texU_int+texV_int*rs.texture.width];
+                        rs.colorBuffer[incr] = rs.material.texture.data[texU_int+texV_int*rs.material.texture.width];
 #endif
                     }
                 }
@@ -334,7 +376,7 @@ void rasterBarycentric (unsigned short *indices, const unsigned int &numIndices,
                     if(depth>=rs.depthBuffer[mem_pos])
                     {
                         rs.depthBuffer[mem_pos] = depth;
-                        rs.colorBuffer[mem_pos] = colors[debug_color&7];
+                        rs.colorBuffer[mem_pos] = debug_colors[debug_color&7];
                     }
                 }
                 mem_pos++;
