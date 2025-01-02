@@ -2,6 +2,10 @@
 #include "log.h"
 #include <stdlib.h>
 
+#define SWAP(a,b) {int temp; temp=a; a=b; b=temp;}
+#define DOT(v0,v1) (v0.x*v1.x+v0.y*v1.y)
+#define CLAMP(v,max,min) v=((v>max)?max:(v<min)?min:v)
+
 struct TR_VERTEX
 {
     VEC3 pos;
@@ -26,7 +30,7 @@ struct RENDER_STATE
     MATRIX viewMatrix;
 } rs;
 
-unsigned int colors[] = {0xFFFF0000,0xFF00FF00,0xFF0000FF,0xFFFFFF00,0xFFFF00FF,0xFF00FFFF};
+unsigned int colors[] = {0xFFFF0000,0xFF00FF00,0xFF0000FF,0xFFFFFF00,0xFFFF00FF,0xFF00FFFF,0xFF800000,0xFF008000,0xFF000080};
 unsigned int currColor = 0;
 
 void rasterSetWorldMatrix(MATRIX m) { rs.worldMatrix = m; }
@@ -55,14 +59,33 @@ void rasterClear(unsigned int color, float depth)
     unsigned int i = rs.frameWidth*rs.frameHeight;
     while(i--)
     {
-        rs.depthBuffer[i]= 0.0f;
-        rs.colorBuffer[i] = 0x00000000;
+        rs.depthBuffer[i]= depth;
+        rs.colorBuffer[i] = color;
     }
 }
 
 void rasterSetMaterial(TEXTURE texture)
 {
     rs.texture = texture;
+}
+
+inline void boundingBox(VEC3 p0, VEC3 p1, VEC3 p2, VEC2INT &a, VEC2INT &b)
+{
+    if((p0.x<=p1.x) && (p0.x<=p2.x)) a.x = p0.x;
+    if((p1.x<=p2.x) && (p1.x<=p0.x)) a.x = p1.x;
+    if((p2.x<=p0.x) && (p2.x<=p1.x)) a.x = p2.x;
+
+    if((p0.y<=p1.y) && (p0.y<=p2.y)) a.y = p0.y;
+    if((p1.y<=p2.y) && (p1.y<=p0.y)) a.y = p1.y;
+    if((p2.y<=p0.y) && (p2.y<=p1.y)) a.y = p2.y;
+
+    if((p0.x>=p1.x) && (p0.x>=p2.x)) b.x = p0.x;
+    if((p1.x>=p2.x) && (p1.x>=p0.x)) b.x = p1.x;
+    if((p2.x>=p0.x) && (p2.x>=p1.x)) b.x = p2.x;
+
+    if((p0.y>=p1.y) && (p0.y>=p2.y)) b.y = p0.y;
+    if((p1.y>=p2.y) && (p1.y>=p0.y)) b.y = p1.y;
+    if((p2.y>=p0.y) && (p2.y>=p1.y)) b.y = p2.y;
 }
 
 inline bool rasterCulling (VEC3 v0, VEC3 v1, VEC3 v2)
@@ -74,24 +97,22 @@ inline bool rasterCulling (VEC3 v0, VEC3 v1, VEC3 v2)
     if(v0.z<0.0f && v1.z<0.0f && v2.z<0.0f) return true;
 
     // Bounding box check (out-of-the-screen)
-    VEC2INT BB_A( (v0.x>v1.x) ? (v0.x>v2.x) ? v0.x:v2.x:v1.x , (v0.y>v1.y) ? (v0.y>v2.y) ? v0.y:v2.y:v1.y);
-    VEC2INT BB_B( (v0.x<v1.x) ? (v0.x<v2.x) ? v0.x:v2.x:v1.x , (v0.y<v1.y) ? (v0.y<v2.y) ? v0.y:v2.y:v1.y);
-    VEC2INT BB_C( (BB_A.x + BB_B.x)/2, (BB_A.y + BB_B.y)/2);
-    VEC2INT BB_D( abs(BB_A.x - BB_B.x)/2, abs(BB_A.y - BB_B.y)/2);
-    VEC2INT BB_S (rs.frameWidth/2, rs.frameHeight/2);
+    VEC2INT a, b;
+    boundingBox(v0, v1, v2, a, b);
+    VEC2INT sc(rs.frameWidth/2, rs.frameHeight/2);
+    VEC2INT td((b.x-a.x)/2,(b.y-a.y)/2);
+    VEC2INT tc((b.x+a.x)/2,(b.y+a.y)/2);
 
-    if( abs(BB_S.x-BB_C.x)>(BB_S.x+BB_D.x) &&
-        abs(BB_S.y-BB_C.y)>(BB_S.y+BB_D.y) ) return true;
+      if( abs(tc.x-sc.x)>(td.x+sc.x) &&
+        abs(tc.y-sc.y)>(td.y+sc.y) ) return true;
 
     return false;
 }
 
-#define SWAP(a,b) {int temp; temp=a; a=b; b=temp;}
-#define DOT(v0,v1) (v0.x*v1.x+v0.y*v1.y)
-
-#define CLAMP(v,max,min) v=((v>max)?max:(v<min)?min:v)
-inline unsigned int intensity (unsigned int color, float intensity)
+inline unsigned int blend (unsigned int mem_pos, unsigned int U, unsigned int V, float intensity)
 {
+    unsigned int color = rs.texture.data[U+V*rs.texture.width];
+
     CLAMP(intensity,1.0f,0.0f);
     unsigned int c = color;
     unsigned int r = (unsigned int)((float)(c>>16&0xFF)*intensity);
@@ -100,6 +121,24 @@ inline unsigned int intensity (unsigned int color, float intensity)
     c = 0xFF<<24|r<<16|g<<8|b;
 
     return c;
+}
+
+// Barycentric coordinates. Cramer's rule to solve linear systems
+inline void baryVal (VEC3 v0, VEC3 v1, VEC3 v2, VEC3 p, VEC3 &by)
+{
+    VEC3 br0 = v1 - v0;
+    VEC3 br1 = v2 - v0;
+    float d00 = DOT(br0, br0);
+    float d01 = DOT(br0, br1);
+    float d11 = DOT(br1, br1);
+    float invD = 1.0 / (d00 * d11 - d01 * d01);
+
+    VEC3 br2 = p - v0;
+    float d20 = DOT(br2, br0);
+    float d21 = DOT(br2, br1);
+    by.y = (d11 * d20 - d01 * d21) * invD;
+    by.z = (d00 * d21 - d01 * d20) * invD;
+    by.x = 1.0f - by.y - by.z;
 }
 
 // Barycentric coordinates. Cramer's rule to solve linear systems
@@ -220,7 +259,7 @@ void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR
 
                         // Draw the pixel on the screen buffer
 #if 1
-                        rs.colorBuffer[incr] = intensity(rs.texture.data[texU_int+texV_int*rs.texture.width], shade);
+                        rs.colorBuffer[incr] = blend(incr, texU_int, texV_int, shade);
 #else
                         rs.colorBuffer[incr] = rs.texture.data[texU_int+texV_int*rs.texture.width];
 #endif
@@ -234,6 +273,84 @@ void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR
                 incr++;
             }
         }
+    }
+}
+
+void rasterBarycentric (unsigned short *indices, const unsigned int &numIndices, TR_VERTEX *meshTVB)
+{
+    VEC2INT a, b;
+    unsigned int debug_color = 0;
+
+    for (int indexCount = 0; indexCount < numIndices;)
+    {
+        TR_VERTEX v0 = meshTVB[indices[indexCount++]];
+        TR_VERTEX v1 = meshTVB[indices[indexCount++]];
+        TR_VERTEX v2 = meshTVB[indices[indexCount++]];
+
+        if (rasterCulling(v0.pos, v1.pos, v2.pos)) continue;
+
+        boundingBox(v0.pos, v1.pos, v2.pos, a, b);
+
+        // Limit bounding box to the section within the screen
+        if(a.x<0) a.x=0;
+        if(a.y<0) a.y=0;
+        if(b.x>=rs.frameWidth) b.x=rs.frameWidth-1;
+        if(b.y>=rs.frameHeight) b.y=rs.frameHeight-1;
+
+        float dx = 1.0f / float(b.x-a.x);
+        float dy = 1.0f / float(b.y-a.y);
+
+        VEC3 A(a.x,a.y,0.0f), B(b.x,a.y,0.0f), C(a.x,b.y, 0.0f), byA, byB, byC;
+        baryVal (v0.pos, v1.pos, v2.pos, A, byA);
+        baryVal (v0.pos, v1.pos, v2.pos, B, byB);
+        baryVal (v0.pos, v1.pos, v2.pos, C, byC);
+
+        float U=byA.x;
+        float V=byA.y;
+        float W=byA.z;
+        float incr_Ux = (byB.x-byA.x)*dx;
+        float incr_Uy = (byC.x-byA.x)*dy-(byB.x-byA.x);
+        float incr_Vx = (byB.y-byA.y)*dx;
+        float incr_Vy = (byC.y-byA.y)*dy-(byB.y-byA.y);
+        float incr_Wx = (byB.z-byA.z)*dx;
+        float incr_Wy = (byC.z-byA.z)*dy-(byB.z-byA.z);
+
+        VEC3 vDepth(v0.pos.z, v1.pos.z, v2.pos.z);
+        float depth =  vDepth.dot(byA);
+        float depthB =  vDepth.dot(byB);
+        float depthC =  vDepth.dot(byC);
+        float depth_incrx = (depthB-depth)*dx;
+        float depth_incry = (depthC-depth)*dy-(depthB-depth);
+
+        int mem_pos = a.x+a.y*rs.frameWidth;
+        int incr_y = rs.frameWidth-(b.x-a.x);
+
+        for(int y=a.y; y<b.y; y++)
+        {
+            for(int x=a.x; x<b.x; x++)
+            {
+                if(U>=0.0f && V>=0.0f && W>=0.0f)
+                {
+                    if(depth>=rs.depthBuffer[mem_pos])
+                    {
+                        rs.depthBuffer[mem_pos] = depth;
+                        rs.colorBuffer[mem_pos] = colors[debug_color&7];
+                    }
+                }
+                mem_pos++;
+                U+=incr_Ux;
+                V+=incr_Vx;
+                W+=incr_Wx;
+                depth += depth_incrx;
+            }
+            mem_pos += incr_y;
+            U+=incr_Uy;
+            V+=incr_Vy;
+            W+=incr_Wy;
+            depth += depth_incry;
+        }
+
+        debug_color++;
     }
 }
 
@@ -275,6 +392,7 @@ void rasterSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsi
 
     rasterTransform (vertices, numVertices, meshTVB);
     rasterRasterize (indices, numIndices, meshTVB);
+    //rasterBarycentric (indices, numIndices, meshTVB);
 
     free(meshTVB);
 }

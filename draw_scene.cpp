@@ -111,10 +111,11 @@ void draw_frame ()
 
     mProjection.perspectiveFovRH(camera.yfov, aspectRatio, camera.znear, camera.zfar, isRotated);
 
-    rasterClear();
+    rasterClear(0xFF400000);
 
     for(MESH& mesh : gltfScene.meshes)
     {
+        //if(mesh.indexCount<100) continue; // avoid floor box
         MATRIX mModel, mMVP;
         mModel.scaling(mesh.transform.scale.x, mesh.transform.scale.y, mesh.transform.scale.z);
         mModel.rotationQ(mesh.transform.rotation);
