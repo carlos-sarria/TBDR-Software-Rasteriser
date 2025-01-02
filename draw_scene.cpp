@@ -133,10 +133,10 @@ void draw_frame ()
 
         MATERIAL material;
         material.texture = gltfScene.textures[mesh.textureID];
-        //material.texture.data = 0;
+       // material.texture.data = 0;
         material.blend_mode = ALPHA;
         material.factor = 1.0f;
-        material.color = 0x80FFFFFF;//colors[mesh_count&7];
+        material.color = colors[mesh_count&7];
         material.smooth_shade = true;
         rasterSetMaterial(material);
 

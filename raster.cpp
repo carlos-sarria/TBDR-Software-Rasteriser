@@ -228,7 +228,7 @@ void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR
 
         int total_height = v2.pos.y - v0.pos.y;
 
-        for (int i = 0; i <= total_height; i++)
+        for (int i = 0; i < total_height; i++)
         {
             int y = int(v0.pos.y)+i;
 
@@ -286,7 +286,7 @@ void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR
 
             unsigned long incr = (a + y * rs.frameWidth);
 
-            for (int x = a; x <= b; x++)
+            for (int x = a; x < b; x++)
             {
                 if(x>=0 && x<rs.frameWidth)
                 {
