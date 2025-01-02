@@ -148,6 +148,10 @@ inline unsigned int blend (unsigned int mem_pos, unsigned int U, unsigned int V,
             red   += s_red;
             green += s_green;
             blue  += s_blue;
+
+            CLAMP(red, 0.0f, 255.0);
+            CLAMP(green, 0.0f, 255.0);
+            CLAMP(blue, 0.0f, 255.0);
         }
 
         if (rs.material.blend_mode==ALPHA)
