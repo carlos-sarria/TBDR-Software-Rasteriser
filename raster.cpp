@@ -338,17 +338,21 @@ void rasterRasterizeTiler (unsigned short *indices, const unsigned int &numIndic
 
         boundingBox(v0.pos, v1.pos, v2.pos, bb_a, bb_b);
 
+        // Limit the bounding box to the screen
+        if(bb_a.x<0) bb_a.x=0;
+        if(bb_a.y<0) bb_a.y=0;
+        if(bb_b.x>=rs.frameWidth) bb_b.x=rs.frameWidth -1;
+        if(bb_b.y>=rs.frameHeight) bb_b.y=rs.frameHeight -1 ;
+
         // divide the bounding box in 8x8 tiles
-        int tiles_x = (bb_b.x-bb_a.x)/8+1;
-        int tiles_y = (bb_b.y-bb_a.y)/8+1;
+        int tiles_x = (bb_b.x-bb_a.x)/8 + 1;
+        int tiles_y = (bb_b.y-bb_a.y)/8 + 1;
 
         for(int ty=0; ty<tiles_y; ty++)
             for(int tx=0;tx<tiles_x; tx++)
         {
             VEC2INT a(bb_a.x+tx*8, bb_a.y+ty*8);
             VEC2INT b(bb_a.x+tx*8+8, bb_a.y+ty*8+8);
-
-            if(a.x>rs.frameWidth || b.x<0.0f || a.y>rs.frameHeight || b.y<0.0f) continue;
 
             // Limit bounding box to the section within the screen
             if(a.x<0) a.x=0;
@@ -481,8 +485,8 @@ void rasterSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsi
     TR_VERTEX *meshTVB = (TR_VERTEX *)malloc(numVertices*sizeof(TR_VERTEX));
 
     rasterTransform (vertices, numVertices, meshTVB);
-    //rasterRasterizeIMR (indices, numIndices, meshTVB);
-    rasterRasterizeTiler (indices, numIndices, meshTVB);
+    rasterRasterizeIMR (indices, numIndices, meshTVB);
+    //rasterRasterizeTiler (indices, numIndices, meshTVB);
 
     free(meshTVB);
     //apiLog("PIXELS: %d",totalPixels);
