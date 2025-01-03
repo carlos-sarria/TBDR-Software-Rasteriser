@@ -133,8 +133,8 @@ void draw_frame ()
 
         MATERIAL material;
         material.texture = gltfScene.textures[mesh.textureID];
-       // material.texture.data = 0;
-        material.blend_mode = ADDITIVE;
+        //material.texture.data = 0;
+        material.blend_mode = NONE;
         material.factor = 0.5f;
         material.color = colors[mesh_count&7];
         material.smooth_shade = true;

@@ -33,6 +33,8 @@ struct RENDER_STATE
 unsigned int debug_colors[] = {0xFFFF0000,0xFF00FF00,0xFF0000FF,0xFFFFFF00,0xFFFF00FF,0xFF00FFFF,0xFF800000,0xFF008000,0xFF000080};
 unsigned int currColor = 0;
 
+unsigned int totalPixels;
+
 void rasterSetWorldMatrix(MATRIX m) { rs.worldMatrix = m; }
 
 void rasterSetViewMatrix(MATRIX m) { rs.viewMatrix = m; }
@@ -69,6 +71,8 @@ void rasterClear(unsigned int color, float depth)
         rs.depthBuffer[i]= depth;
         rs.colorBuffer[i] = color;
     }
+
+    totalPixels = 0;
 }
 
 void rasterSetMaterial(MATERIAL material)
@@ -212,7 +216,7 @@ inline void barycentric (VEC3 v0, VEC3 v1, VEC3 v2, VEC3 a, VEC3 b, VEC3 &by1, V
     by2.x = 1.0f - by2.y - by2.z;
 }
 
-void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR_VERTEX *meshTVB)
+void rasterRasterizeIMR(unsigned short *indices, const unsigned int &numIndices, TR_VERTEX *meshTVB)
 {
     for (int indexCount = 0; indexCount < numIndices;)
     {
@@ -275,11 +279,11 @@ void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR
 
             VEC3 vU(v0.uv.u, v1.uv.u, v2.uv.u);
             float texU = vU.dot(byA) * rs.material.texture.width * invD;
-            float texUB = vU.dot(byB) * rs.material.texture.height * invDB;
+            float texUB = vU.dot(byB) * rs.material.texture.width * invDB;
             float texU_incr = (texUB-texU)*d;
 
             VEC3 vV(v0.uv.v, v1.uv.v, v2.uv.v);
-            float texV = vV.dot(byA) * rs.material.texture.width * invD;
+            float texV = vV.dot(byA) * rs.material.texture.height * invD;
             float texVB = vV.dot(byB) * rs.material.texture.height * invDB;
             float texV_incr = (texVB-texV)*d;
 
@@ -304,11 +308,8 @@ void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR
                         unsigned int texV_int = (unsigned int)(texV) & (rs.material.texture.height-1);
 
                         // Draw the pixel on the screen buffer
-#if 1
                         rs.colorBuffer[incr] = blend(incr, texU_int, texV_int, shade);
-#else
-                        rs.colorBuffer[incr] = rs.material.texture.data[texU_int+texV_int*rs.material.texture.width];
-#endif
+                        totalPixels++;
                     }
                 }
 
@@ -322,9 +323,9 @@ void rasterRasterize(unsigned short *indices, const unsigned int &numIndices, TR
     }
 }
 
-void rasterBarycentric (unsigned short *indices, const unsigned int &numIndices, TR_VERTEX *meshTVB)
+void rasterRasterizeTiler (unsigned short *indices, const unsigned int &numIndices, TR_VERTEX *meshTVB)
 {
-    VEC2INT a, b;
+    VEC2INT bb_a, bb_b;
     unsigned int debug_color = 0;
 
     for (int indexCount = 0; indexCount < numIndices;)
@@ -335,68 +336,111 @@ void rasterBarycentric (unsigned short *indices, const unsigned int &numIndices,
 
         if (rasterCulling(v0.pos, v1.pos, v2.pos)) continue;
 
-        boundingBox(v0.pos, v1.pos, v2.pos, a, b);
+        boundingBox(v0.pos, v1.pos, v2.pos, bb_a, bb_b);
 
-        // Limit bounding box to the section within the screen
-        if(a.x<0) a.x=0;
-        if(a.y<0) a.y=0;
-        if(b.x>=rs.frameWidth) b.x=rs.frameWidth-1;
-        if(b.y>=rs.frameHeight) b.y=rs.frameHeight-1;
+        // divide the bounding box in 8x8 tiles
+        int tiles_x = (bb_b.x-bb_a.x)/8+1;
+        int tiles_y = (bb_b.y-bb_a.y)/8+1;
 
-        float dx = 1.0f / float(b.x-a.x);
-        float dy = 1.0f / float(b.y-a.y);
-
-        VEC3 A(a.x,a.y,0.0f), B(b.x,a.y,0.0f), C(a.x,b.y, 0.0f), byA, byB, byC;
-        baryVal (v0.pos, v1.pos, v2.pos, A, byA);
-        baryVal (v0.pos, v1.pos, v2.pos, B, byB);
-        baryVal (v0.pos, v1.pos, v2.pos, C, byC);
-
-        float U=byA.x;
-        float V=byA.y;
-        float W=byA.z;
-        float incr_Ux = (byB.x-byA.x)*dx;
-        float incr_Uy = (byC.x-byA.x)*dy-(byB.x-byA.x);
-        float incr_Vx = (byB.y-byA.y)*dx;
-        float incr_Vy = (byC.y-byA.y)*dy-(byB.y-byA.y);
-        float incr_Wx = (byB.z-byA.z)*dx;
-        float incr_Wy = (byC.z-byA.z)*dy-(byB.z-byA.z);
-
-        VEC3 vDepth(v0.pos.z, v1.pos.z, v2.pos.z);
-        float depth =  vDepth.dot(byA);
-        float depthB =  vDepth.dot(byB);
-        float depthC =  vDepth.dot(byC);
-        float depth_incrx = (depthB-depth)*dx;
-        float depth_incry = (depthC-depth)*dy-(depthB-depth);
-
-        int mem_pos = a.x+a.y*rs.frameWidth;
-        int incr_y = rs.frameWidth-(b.x-a.x);
-
-        for(int y=a.y; y<b.y; y++)
+        for(int ty=0; ty<tiles_y; ty++)
+            for(int tx=0;tx<tiles_x; tx++)
         {
-            for(int x=a.x; x<b.x; x++)
-            {
-                if(U>=0.0f && V>=0.0f && W>=0.0f)
-                {
-                    if(depth>=rs.depthBuffer[mem_pos])
-                    {
-                        rs.depthBuffer[mem_pos] = depth;
-                        rs.colorBuffer[mem_pos] = debug_colors[debug_color&7];
-                    }
-                }
-                mem_pos++;
-                U+=incr_Ux;
-                V+=incr_Vx;
-                W+=incr_Wx;
-                depth += depth_incrx;
-            }
-            mem_pos += incr_y;
-            U+=incr_Uy;
-            V+=incr_Vy;
-            W+=incr_Wy;
-            depth += depth_incry;
-        }
+            VEC2INT a(bb_a.x+tx*8, bb_a.y+ty*8);
+            VEC2INT b(bb_a.x+tx*8+8, bb_a.y+ty*8+8);
 
-        debug_color++;
+            if(a.x>rs.frameWidth || b.x<0.0f || a.y>rs.frameHeight || b.y<0.0f) continue;
+
+            // Limit bounding box to the section within the screen
+            if(a.x<0) a.x=0;
+            if(a.y<0) a.y=0;
+            if(b.x>=rs.frameWidth)  b.x=rs.frameWidth-1;
+            if(b.y>=rs.frameHeight) b.y=rs.frameHeight-1;
+
+            float dx = 1.0f / float(b.x-a.x);
+            float dy = 1.0f / float(b.y-a.y);
+
+            VEC3 A(a.x,a.y,0.0f), B(b.x,a.y,0.0f), C(a.x,b.y, 0.0f), byA, byB, byC;
+            baryVal (v0.pos, v1.pos, v2.pos, A, byA);
+            baryVal (v0.pos, v1.pos, v2.pos, B, byB);
+            baryVal (v0.pos, v1.pos, v2.pos, C, byC);
+
+            float U=byA.x;
+            float V=byA.y;
+            float W=byA.z;
+            float U_incrx = (byB.x-byA.x)*dx;
+            float U_incry = (byC.x-byA.x)*dy-(byB.x-byA.x);
+            float V_incrx = (byB.y-byA.y)*dx;
+            float V_incry = (byC.y-byA.y)*dy-(byB.y-byA.y);
+            float W_incrx = (byB.z-byA.z)*dx;
+            float W_incry = (byC.z-byA.z)*dy-(byB.z-byA.z);
+
+            VEC3 vDepth(v0.pos.z, v1.pos.z, v2.pos.z);
+            float depth =  vDepth.dot(byA);
+            float depthB =  vDepth.dot(byB);
+            float depthC =  vDepth.dot(byC);
+            float depth_incrx = (depthB-depth)*dx;
+            float depth_incry = (depthC-depth)*dy-(depthB-depth);
+
+            VEC3 vU(v0.uv.u, v1.uv.u, v2.uv.u);
+            float u =  vU.dot(byA) / depth;
+            float uB =  vU.dot(byB) / depthB;
+            float uC =  vU.dot(byC) / depthC;
+            float u_incrx = (uB-u)*dx;
+            float u_incry = (uC-u)*dy-(uB-u);
+
+            VEC3 vV(v0.uv.v, v1.uv.v, v2.uv.v);
+            float v =  vV.dot(byA) / depth;
+            float vB =  vV.dot(byB) / depthB;
+            float vC =  vV.dot(byC) / depthC;
+            float v_incrx = (vB-v)*dx;
+            float v_incry = (vC-v)*dy-(vB-v);
+
+            VEC3 vI(v0.intensity, v1.intensity, v2.intensity);
+            float i =  vI.dot(byA) / depth;
+            float iB =  vI.dot(byB) / depthB;
+            float iC =  vI.dot(byC) / depthC;
+            float i_incrx = (iB-i)*dx;
+            float i_incry = (iC-i)*dy-(iB-i);
+
+            int mem_pos = a.x+a.y*rs.frameWidth;
+            int pos_incry = rs.frameWidth-(b.x-a.x);
+
+            for(int y=a.y; y<b.y; y++)
+            {
+                for(int x=a.x; x<b.x; x++)
+                {
+                    if(U>=0.0f && V>=0.0f && W>=0.0f)
+                    {
+                        if(depth>=rs.depthBuffer[mem_pos])
+                        {
+                            rs.depthBuffer[mem_pos] = depth;
+                            rs.colorBuffer[mem_pos] = blend(mem_pos,
+                                                            (unsigned int)(u*rs.material.texture.width)&(rs.material.texture.width-1),
+                                                            (unsigned int)(v*rs.material.texture.height)&(rs.material.texture.height-1),
+                                                            i);
+                        }
+                    }
+                    mem_pos++;
+                    U+=U_incrx;
+                    V+=V_incrx;
+                    W+=W_incrx;
+                    u+=u_incrx;
+                    v+=v_incrx;
+                    i+=i_incrx;
+                    depth += depth_incrx;
+                }
+                mem_pos += pos_incry;
+                U+=U_incry;
+                V+=V_incry;
+                W+=W_incry;
+                u+=u_incry;
+                v+=v_incry;
+                i+=i_incry;
+                depth += depth_incry;
+            }
+
+            debug_color++;
+        }
     }
 }
 
@@ -437,8 +481,9 @@ void rasterSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsi
     TR_VERTEX *meshTVB = (TR_VERTEX *)malloc(numVertices*sizeof(TR_VERTEX));
 
     rasterTransform (vertices, numVertices, meshTVB);
-    rasterRasterize (indices, numIndices, meshTVB);
-    //rasterBarycentric (indices, numIndices, meshTVB);
+    //rasterRasterizeIMR (indices, numIndices, meshTVB);
+    rasterRasterizeTiler (indices, numIndices, meshTVB);
 
     free(meshTVB);
+    //apiLog("PIXELS: %d",totalPixels);
 }
