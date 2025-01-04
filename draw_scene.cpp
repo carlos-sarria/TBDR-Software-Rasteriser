@@ -89,7 +89,7 @@ void draw_frame ()
 
     mProjection.perspectiveFovRH(camera.yfov, aspectRatio, camera.znear, camera.zfar, isRotated);
 
-    rasterClear(0xFF400000);
+    rasterClear(0xFF200000);
 
     unsigned int mesh_count = 0;
     for(MESH& mesh : gltfScene.meshes)
@@ -99,7 +99,7 @@ void draw_frame ()
         mModel.scaling(mesh.transform.scale.x, mesh.transform.scale.y, mesh.transform.scale.z);
         mModel.rotationQ(mesh.transform.rotation);
         mModel.translation(mesh.transform.translation.x, mesh.transform.translation.y, mesh.transform.translation.z);
-        mModel.rotationZ(angle); // mModel.rotationX(angle/2.0f);// FOR TESTING
+        mModel.rotationZ(angle); mModel.rotationX(angle/2.0f);// FOR TESTING
 
         rasterSetWorldMatrix(mModel);
         rasterSetViewMatrix(mView);
@@ -109,7 +109,7 @@ void draw_frame ()
 
         MATERIAL material;
         material.texture = gltfScene.textures[mesh.textureID];
-       // material.texture.data = 0;
+        //material.texture.data = 0;
         material.blend_mode = NONE;
         material.factor = 0.5f;
         material.color = colors[mesh_count&7];

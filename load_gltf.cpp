@@ -38,7 +38,7 @@ bool loadDDS(const char* textureFileName, TEXTURE& texture)
         }
         if(tc.num_mips>0)
         {
-            for (int mip = 0; mip < tc.num_mips; mip++)
+            for (int mip = 0; mip < 1/*tc.num_mips*/; mip++)
             {
                 ddsktx_sub_data sub_data;
                 ddsktx_get_sub(&tc, &sub_data, fileData, fileSize, 0, 0, mip);
@@ -48,6 +48,12 @@ bool loadDDS(const char* textureFileName, TEXTURE& texture)
                 texture.height = sub_data.height;
             }
         }
+
+        apiLog("Loaded %s (%d,%d)\n",textureFileName,tc.width,tc.height);
+    }
+    else
+    {
+        apiLog("Texture % not found\n",textureFileName);
     }
 
     free(fileData);
