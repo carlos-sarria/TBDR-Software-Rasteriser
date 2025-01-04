@@ -46,6 +46,7 @@ struct SCENE
     std::vector<TEXTURE> textures;
     std::vector<CAMERA> cameras;
     std::vector<LIGHT> lights;
+    std::string path;
 };
 
 void load_gltf(const char* fileName);

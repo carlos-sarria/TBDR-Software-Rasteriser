@@ -11,30 +11,6 @@ CAMERA camera;
 
 unsigned int colors[] = {0xFFFF0000,0xFF00FF00,0xFF0000FF,0xFFFFFF00,0xFFFF00FF,0xFF00FFFF,0xFF800000,0xFF008000,0xFF000080};
 
-void initializeCamera()
-{
-    // Get the camera (the first one)
-    if(gltfScene.cameras.size()>0)
-    {
-        camera.transform = gltfScene.cameras[0].transform;
-        camera.from = gltfScene.cameras[0].transform.translation;
-        camera.to = VEC3(0.0f, 0.0f, 0.0f);
-        camera.yfov = gltfScene.cameras[0].yfov;
-        camera.zfar = gltfScene.cameras[0].zfar;
-        camera.znear = gltfScene.cameras[0].znear;
-    }
-    else
-    {
-        camera.transform.rotation = QUATERNION(0.7f,0.0f,0.0f,0.7f);
-        camera.transform.translation = VEC3(0.0f,-30.0f,0.0f);
-        camera.from = camera.transform.translation;
-        camera.to = VEC3(0.0f, 0.0f, 0.0f);
-        camera.yfov = 0.39959f;
-        camera.zfar = 5000.0f;
-        camera.znear = 0.01f;
-    }
-}
-
 #define ROT_SPEED (0.05f*PI/180.0f)
 #define MOV_SPEED 0.3f
 void updateCamera(char keyPressed, const bool mousePressed, long mousePointX, long mousePointY)
@@ -48,7 +24,7 @@ void updateCamera(char keyPressed, const bool mousePressed, long mousePointX, lo
         mousePrevX = mousePointX;
         mousePrevY = mousePointY;
         if(bFirstTime) {
-            initializeCamera();
+            camera = gltfScene.cameras[0];
             cameraPosition = camera.transform.translation;
             cameraRotation = camera.transform.rotation;
         }
@@ -133,7 +109,7 @@ void draw_frame ()
 
         MATERIAL material;
         material.texture = gltfScene.textures[mesh.textureID];
-        //material.texture.data = 0;
+       // material.texture.data = 0;
         material.blend_mode = NONE;
         material.factor = 0.5f;
         material.color = colors[mesh_count&7];
@@ -148,7 +124,7 @@ void draw_frame ()
     angle += 0.01f;
     numFrames++;
 
-    if(clock()-start > 1000L) // 1 seconds
+    if(clock()-start > 1000L) // 1 second
     {
         apiLog(" %d FPS", numFrames);
         numFrames = 0;

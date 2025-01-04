@@ -67,7 +67,7 @@ static bool myTextureLoadingFunction(tinygltf::Image *image, const int image_idx
 
 TEXTURE texture;
 #if 1
-    std::string uri = "..//..//model//"+image->name+".dds";
+    std::string uri = gltfScene.path+"\\"+image->name+".dds";
     loadDDS(uri.c_str(), texture);
 #else  // PNG Format
     texture.data = (unsigned int *)malloc(size);//bytes;
@@ -108,6 +108,9 @@ void load_gltf(const char* fileName)
     std::string err;
     std::string warn;
     unsigned int textureID = 0;
+
+    std::string fn(fileName);
+    gltfScene.path = fn.substr(0, fn.rfind('\\'));
 
     gltf_ctx.SetImageLoader(myTextureLoadingFunction, (void *)&gltfScene);
 
@@ -218,6 +221,33 @@ void load_gltf(const char* fileName)
 
             }
         }
+    }
+
+    if (gltfScene.cameras.size()==0)
+    {
+        CAMERA camera;
+
+        camera.transform.rotation = QUATERNION(0.7f,0.0f,0.0f,0.7f);
+        camera.transform.translation = VEC3(0.0f,-30.0f,0.0f);
+        camera.from = camera.transform.translation;
+        camera.to = VEC3(0.0f, 0.0f, 0.0f);
+        camera.yfov = 0.39959f;
+        camera.zfar = 5000.0f;
+        camera.znear = 0.01f;
+
+        gltfScene.cameras.push_back(camera);
+    }
+
+    if (gltfScene.lights.size()==0)
+    {
+        LIGHT light;
+
+        light.type = 0;
+        light.transform.rotation = QUATERNION(0.57f,0.17f,0.27f,0.75f);
+        light.transform.translation = VEC3(4.0f,1.0f,6.0f);
+        light.transform.scale = VEC3(1.0f,1.0f,1.0f);
+
+        gltfScene.lights.push_back(light);
     }
 }
 
