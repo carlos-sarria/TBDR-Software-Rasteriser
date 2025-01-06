@@ -2,6 +2,7 @@
 #include "raster.h"
 #include "load_gltf.h"
 #include "log.h"
+#include "bake.h"
 
 unsigned int SCREEN_WIDTH = 0;
 unsigned int SCREEN_HEIGHT = 0;
@@ -75,6 +76,14 @@ void initialise_app(const char* gltfFile, unsigned int frameWidth, unsigned int 
     SCREEN_WIDTH = frameWidth;
 
     rasterInitialise(frameWidth, frameHeight, frameBuffer);
+
+    for(MESH& mesh : gltfScene.meshes)
+    {
+        if(mesh.normalTexture>-1)
+        {
+            bakeNormals (gltfScene.textures[mesh.normalTexture], mesh.indexBuffer, mesh.indexCount, mesh.vertexBuffer);
+        }
+    }
 }
 void draw_frame ()
 {
@@ -99,7 +108,7 @@ void draw_frame ()
         mModel.scaling(mesh.transform.scale.x, mesh.transform.scale.y, mesh.transform.scale.z);
         mModel.rotationQ(mesh.transform.rotation);
         mModel.translation(mesh.transform.translation.x, mesh.transform.translation.y, mesh.transform.translation.z);
-        mModel.rotationZ(angle); mModel.rotationX(angle/2.0f);// FOR TESTING
+        mModel.rotationZ(angle); //mModel.rotationX(angle/2.0f);// FOR TESTING
 
         rasterSetWorldMatrix(mModel);
         rasterSetViewMatrix(mView);
@@ -108,8 +117,14 @@ void draw_frame ()
         rasterSetLight(gltfScene.lights[0].transform.translation);
 
         MATERIAL material;
-        material.texture = gltfScene.textures[mesh.textureID];
-        //material.texture.data = 0;
+        if(mesh.baseColorTexture!=-1) material.baseColor = gltfScene.textures[mesh.baseColorTexture];
+        else material.baseColor.data = 0;
+        if(mesh.metallicRoughnessTexture!=-1) material.metallicRoughness = gltfScene.textures[mesh.metallicRoughnessTexture];
+        else material.metallicRoughness.data = 0;
+        if(mesh.emissiveTexture!=-1) material.emissive = gltfScene.textures[mesh.emissiveTexture];
+        else material.emissive.data = 0;
+        if(mesh.normalTexture!=-1) material.normal = gltfScene.textures[mesh.normalTexture];
+        else material.normal.data = 0;
         material.blend_mode = NONE;
         material.factor = 0.5f;
         material.color = colors[mesh_count&7];

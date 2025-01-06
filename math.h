@@ -5,6 +5,10 @@
 #include <string.h>
 #include <assert.h>
 
+#define SWAP(a,b) {int temp; temp=a; a=b; b=temp;}
+#define DOT(v0,v1) (v0.x*v1.x+v0.y*v1.y)
+#define CLAMP(v,min,max) v=((v>max)?max:(v<min)?min:v)
+
 const float PI = 3.14159265359f;
 
 static const float fIdentity[16] = {

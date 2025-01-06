@@ -37,7 +37,10 @@ struct MESH
     unsigned int vertexCount;
     unsigned int indexCount;
     TRANSFORM transform;
-    unsigned int textureID;
+    int baseColorTexture;
+    int metallicRoughnessTexture;
+    int emissiveTexture;
+    int normalTexture;
 };
 
 struct SCENE

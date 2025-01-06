@@ -208,11 +208,11 @@ void load_gltf(const char* fileName)
 
                 if(primitive.material != -1)
                 {
-                    textureID = model.materials[primitive.material].pbrMetallicRoughness.baseColorTexture.index;
-                    if(textureID == -1) textureID = 0;
+                    temp_mesh.baseColorTexture = model.materials[primitive.material].pbrMetallicRoughness.baseColorTexture.index;
+                    temp_mesh.metallicRoughnessTexture = model.materials[primitive.material].pbrMetallicRoughness.metallicRoughnessTexture.index;
+                    temp_mesh.emissiveTexture = model.materials[primitive.material].emissiveTexture.index;
+                    temp_mesh.normalTexture = model.materials[primitive.material].normalTexture.index;
                 }
-
-                temp_mesh.textureID = textureID;
 
                 temp_mesh.indexBuffer = (unsigned short*)malloc(sizeof(unsigned short)*numIndices);
                 memcpy(temp_mesh.indexBuffer, bufferIndices, sizeof(unsigned short)*numIndices);

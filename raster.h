@@ -32,7 +32,10 @@ enum BLEND_MODE
 };
 
 struct MATERIAL {
-    TEXTURE texture;
+    TEXTURE baseColor;
+    TEXTURE metallicRoughness;
+    TEXTURE emissive;
+    TEXTURE normal;
     BLEND_MODE blend_mode;
     float factor; // value from 0.0f to 1.0f
     unsigned int color; // used if texture is nullptr

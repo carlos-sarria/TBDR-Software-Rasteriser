@@ -1,10 +1,5 @@
 #include "raster.h"
-#include "log.h"
 #include <stdlib.h>
-
-#define SWAP(a,b) {int temp; temp=a; a=b; b=temp;}
-#define DOT(v0,v1) (v0.x*v1.x+v0.y*v1.y)
-#define CLAMP(v,min,max) v=((v>max)?max:(v<min)?min:v)
 
 struct TR_VERTEX
 {
@@ -24,6 +19,7 @@ struct RENDER_STATE
     MATERIAL material;
 
     VEC3 lightPosition;
+    VEC3 invLightPosition;
 
     MATRIX worldMatrix;
     MATRIX projectionMatrix;
@@ -47,9 +43,9 @@ void rasterInitialise(const int &width, const int &height, void *debugBuffer)
     rs.frameHeight = height;
     rs.depthBuffer = (float *) malloc(rs.frameWidth*rs.frameHeight*sizeof(float));
     rs.colorBuffer = (unsigned long *)debugBuffer;
-    rs.material.texture.data = 0;
-    rs.material.texture.height = 0;
-    rs.material.texture.width = 0;
+    rs.material.baseColor.data = 0;
+    rs.material.baseColor.height = 0;
+    rs.material.baseColor.width = 0;
     rs.material.blend_mode = NONE;
     rs.material.factor = 1.0f;
     rs.material.color = 0xFFFFFFFF;
@@ -116,11 +112,32 @@ inline bool rasterCulling (VEC3 v0, VEC3 v1, VEC3 v2)
     return false;
 }
 
+inline unsigned int blendPBR (unsigned int mem_pos, unsigned int U, unsigned int V)
+{
+    unsigned int tex_color, nor_color;
+    tex_color = (rs.material.baseColor.data==0) ? rs.material.color : rs.material.baseColor.data[U+V*rs.material.baseColor.width];
+    nor_color = (rs.material.normal.data==0) ? rs.material.color : rs.material.normal.data[U+V*rs.material.normal.width];
+
+    VEC3 color(float(tex_color>>16&0xFF),float(tex_color>>8&0xFF),float(tex_color&0xFF));
+
+    VEC3 normal;
+    normal.x = (float)(nor_color>>16&0xFF)-128.0f;
+    normal.y = (float)(nor_color>>8&0xFF)-128.0f;
+    normal.z = (float)(nor_color&0xFF)-128.0f;
+    normal.normalize();
+
+    float shade = normal.dot(rs.invLightPosition) * 0.5f + 0.5f;
+
+    unsigned int res_color = 0xFF<<24|int(shade*color.x)<<16|int(shade*color.y)<<8|int(shade*color.z);
+
+    return res_color;
+}
+
 inline unsigned int blend (unsigned int mem_pos, unsigned int U, unsigned int V, float shade)
 {
     unsigned int tex_color;
     unsigned int source_color;
-    tex_color = (rs.material.texture.data==0) ? rs.material.color : rs.material.texture.data[U+V*rs.material.texture.width];
+    tex_color = (rs.material.baseColor.data==0) ? rs.material.color : rs.material.baseColor.data[U+V*rs.material.baseColor.width];
 
     if(rs.material.blend_mode==NONE && rs.material.smooth_shade==false) return tex_color;
 
@@ -274,13 +291,13 @@ void rasterRasterizeIMR(unsigned short *indices, const unsigned int &numIndices,
             float invDB = 1.0f/depthB;
 
             VEC3 vU(v0.uv.u, v1.uv.u, v2.uv.u);
-            float texU = vU.dot(byA) * rs.material.texture.width * invD;
-            float texUB = vU.dot(byB) * rs.material.texture.width * invDB;
+            float texU = vU.dot(byA) * rs.material.baseColor.width * invD;
+            float texUB = vU.dot(byB) * rs.material.baseColor.width * invDB;
             float texU_incr = (texUB-texU)*d;
 
             VEC3 vV(v0.uv.v, v1.uv.v, v2.uv.v);
-            float texV = vV.dot(byA) * rs.material.texture.height * invD;
-            float texVB = vV.dot(byB) * rs.material.texture.height * invDB;
+            float texV = vV.dot(byA) * rs.material.baseColor.height * invD;
+            float texVB = vV.dot(byB) * rs.material.baseColor.height * invDB;
             float texV_incr = (texVB-texV)*d;
 
             VEC3 vInt(v0.intensity, v1.intensity, v2.intensity);
@@ -300,11 +317,12 @@ void rasterRasterizeIMR(unsigned short *indices, const unsigned int &numIndices,
                         rs.depthBuffer[incr] = depth;
 
                         // Perspective correct texture coordinates
-                        unsigned int texU_int = (unsigned int)(texU) & (rs.material.texture.width-1);
-                        unsigned int texV_int = (unsigned int)(texV) & (rs.material.texture.height-1);
+                        unsigned int texU_int = (unsigned int)(texU) & (rs.material.baseColor.width-1);
+                        unsigned int texV_int = (unsigned int)(texV) & (rs.material.baseColor.height-1);
 
                         // Draw the pixel on the screen buffer
-                        rs.colorBuffer[incr] = blend(incr, texU_int, texV_int, shade);
+                        rs.colorBuffer[incr] = blendPBR(incr, texU_int, texV_int); ;
+                        //rs.colorBuffer[incr] = blend(incr, texU_int, texV_int, shade);
                     }
                 }
 
@@ -325,7 +343,8 @@ void rasterTransform (VERTEX *v, const unsigned int &numVertices, TR_VERTEX *mes
     MATRIX invW = rs.worldMatrix;
     invW.inverse();
 
-    VEC3 transformedLight = invW * rs.lightPosition;
+    rs.invLightPosition = invW * rs.lightPosition;
+    rs.invLightPosition.normalize();
 
     for (int i = 0; i < numVertices; i++)
     {
@@ -335,8 +354,7 @@ void rasterTransform (VERTEX *v, const unsigned int &numVertices, TR_VERTEX *mes
         out.y = v[i].pos.x*mMVP.f[1] + v[i].pos.y*mMVP.f[5] + v[i].pos.z*mMVP.f[9]  + 1.0f*mMVP.f[13];
         out.z = v[i].pos.x*mMVP.f[2] + v[i].pos.y*mMVP.f[6] + v[i].pos.z*mMVP.f[10] + 1.0f*mMVP.f[14];
 
-        transformedLight.normalize();
-        float shade = v[i].nor.dot(transformedLight) * 0.5 + 0.5f;
+        float shade = v[i].nor.dot(rs.invLightPosition) * 0.5 + 0.5f;
 
         float div = 1.0f/out.z;
         meshTVB[i].pos.x = ceil(out.x * div * (rs.frameWidth/2) + rs.frameWidth/2); // ceil = pixel left-top convention
