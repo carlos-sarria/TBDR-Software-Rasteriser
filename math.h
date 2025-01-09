@@ -7,7 +7,11 @@
 
 #define SWAP(a,b) {int temp; temp=a; a=b; b=temp;}
 #define DOT(v0,v1) (v0.x*v1.x+v0.y*v1.y)
-#define CLAMP(v,min,max) v=((v>max)?max:(v<min)?min:v)
+#define CLAMP(v,min,max) ((v>max)?max:(v<min)?min:v)
+#define C256(v) (unsigned int)((v>255)?255:(v<0)?0:v)
+
+#define UNPACK(c) VEC3(float(c>>16&0xFF),float(c>>8&0xFF),float(c&0xFF));
+#define PACK(a,r,g,b) (C256(a)<<24|C256(r)<<16|C256(g)<<8|C256(b))
 
 const float PI = 3.14159265359f;
 
@@ -77,13 +81,22 @@ public:
     VEC3& operator = (const VEC3& inV3) { x = inV3.x; y = inV3.y; z = inV3.z; return *this;}
     bool operator == (const VEC3& inV3) { return (x == inV3.x && y == inV3.y && z == inV3.z); }
     const VEC3 operator + (const VEC3& inV3) const { return VEC3(x+inV3.x, y+inV3.y, z+inV3.z); }
+    const VEC3 operator + (float const& f) const { return VEC3(x+f, y+f, z+f); }
     const VEC3 operator - (const VEC3& inV3) const { return VEC3(x-inV3.x, y-inV3.y, z-inV3.z); }
+    const VEC3 operator - (float const& f) const { return VEC3(x-f, y-f, z-f); }
+    const float operator * (const VEC3& inV3) const { return (x*inV3.x+y*inV3.y+z*inV3.z);}
     const VEC3 operator * (float const& f) const { return VEC3(x*f, y*f, z*f);}
 
     float lenght() { return sqrt(x*x+y*y+z*z); }
     VEC3&  normalize() { float l = lenght(); if(l!=0.0f){ x = x/l;  y=y/l; z=z/l; }; return *this;}
     float dot(const VEC3 &inV3) {return (x*inV3.x + y*inV3.y + z*inV3.z);}
-    const VEC3  cross(const VEC3 &inV3) { VEC3 vOut; vOut.x = y * inV3.z - z * inV3.y; vOut.y = z * inV3.x - x * inV3.z; vOut.z = x * inV3.y - y * inV3.x; return vOut; }
+    const VEC3  cross(const VEC3 &inV3) {
+        VEC3 vOut;
+        vOut.x = y * inV3.z - z * inV3.y;
+        vOut.y = z * inV3.x - x * inV3.z;
+        vOut.z = x * inV3.y - y * inV3.x;
+        return vOut;
+    }
 };
 
 class QUATERNION

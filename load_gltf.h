@@ -41,6 +41,8 @@ struct MESH
     int metallicRoughnessTexture;
     int emissiveTexture;
     int normalTexture;
+    VEC3 center;
+    VEC3 boundingBoxA, boundingBoxB;
 };
 
 struct SCENE
@@ -52,6 +54,7 @@ struct SCENE
     std::string path;
 };
 
+bool loadDDS(const char* textureFileName, TEXTURE& texture);
 void load_gltf(const char* fileName);
 void free_gltf();
 

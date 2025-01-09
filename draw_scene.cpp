@@ -9,10 +9,11 @@ unsigned int SCREEN_HEIGHT = 0;
 
 extern SCENE gltfScene;
 CAMERA camera;
+TEXTURE reflection;
 
 unsigned int colors[] = {0xFFFF0000,0xFF00FF00,0xFF0000FF,0xFFFFFF00,0xFFFF00FF,0xFF00FFFF,0xFF800000,0xFF008000,0xFF000080};
 
-#define ROT_SPEED (0.05f*PI/180.0f)
+#define ROT_SPEED (0.5f*PI/180.0f)
 #define MOV_SPEED 0.3f
 void updateCamera(char keyPressed, const bool mousePressed, long mousePointX, long mousePointY)
 {
@@ -72,6 +73,10 @@ void initialise_app(const char* gltfFile, unsigned int frameWidth, unsigned int 
 {
     load_gltf(gltfFile);
 
+    std::string uri = gltfScene.path+"\\reflection.dds";
+    loadDDS(uri.c_str(), reflection);
+    gltfScene.textures.push_back(reflection);
+
     SCREEN_HEIGHT = frameHeight;
     SCREEN_WIDTH = frameWidth;
 
@@ -108,13 +113,15 @@ void draw_frame ()
         mModel.scaling(mesh.transform.scale.x, mesh.transform.scale.y, mesh.transform.scale.z);
         mModel.rotationQ(mesh.transform.rotation);
         mModel.translation(mesh.transform.translation.x, mesh.transform.translation.y, mesh.transform.translation.z);
-        mModel.rotationZ(angle); //mModel.rotationX(angle/2.0f);// FOR TESTING
+        mModel.rotationZ(angle); mModel.rotationX(angle/2.0f);// FOR TESTING
 
         rasterSetWorldMatrix(mModel);
         rasterSetViewMatrix(mView);
         rasterSetProjectionMatrix(mProjection) ;
 
         rasterSetLight(gltfScene.lights[0].transform.translation);
+
+        rasterSetEye(gltfScene.cameras[0].transform.translation);
 
         MATERIAL material;
         if(mesh.baseColorTexture!=-1) material.baseColor = gltfScene.textures[mesh.baseColorTexture];
@@ -125,18 +132,19 @@ void draw_frame ()
         else material.emissive.data = 0;
         if(mesh.normalTexture!=-1) material.normal = gltfScene.textures[mesh.normalTexture];
         else material.normal.data = 0;
+        material.reflection = reflection;
         material.blend_mode = NONE;
         material.factor = 0.5f;
         material.color = colors[mesh_count&7];
         material.smooth_shade = true;
         rasterSetMaterial(material);
 
-        rasterSendVertices (mesh.vertexBuffer, mesh.vertexCount, mesh.indexBuffer, mesh.indexCount);
+        rasterSendVertices (mesh.vertexBuffer, mesh.vertexCount, mesh.indexBuffer, mesh.indexCount, mesh.center);
 
         mesh_count++;
     }
 
-    angle += 0.01f;
+    angle += 0.03f;
     numFrames++;
 
     if(clock()-start > 1000L) // 1 second

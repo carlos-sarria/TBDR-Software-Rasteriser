@@ -193,18 +193,33 @@ void load_gltf(const char* fileName)
 
                 numVertices = accessor_pos.count;
 
+                temp_mesh.boundingBoxA = VEC3(buffer_pos[0],buffer_pos[1],buffer_pos[2]);
+                temp_mesh.boundingBoxB = temp_mesh.boundingBoxA;
+
                 //for (unsigned int i=0; i<accessor_indices.count; i++)
                 for (unsigned int i=0; i<numVertices; i++)
                 {
-                    temp_mesh.vertexBuffer[i].pos.x = buffer_pos[i * 3 + 0]; // VEC3
-                    temp_mesh.vertexBuffer[i].pos.y = buffer_pos[i * 3 + 1];
-                    temp_mesh.vertexBuffer[i].pos.z = buffer_pos[i * 3 + 2];
+                    float x,y,z;
+
+                    temp_mesh.vertexBuffer[i].pos.x = x = buffer_pos[i * 3 + 0]; // VEC3
+                    temp_mesh.vertexBuffer[i].pos.y = y = buffer_pos[i * 3 + 1];
+                    temp_mesh.vertexBuffer[i].pos.z = z =buffer_pos[i * 3 + 2];
                     temp_mesh.vertexBuffer[i].nor.x = buffer_nor[i * 3 + 0]; // VEC3
                     temp_mesh.vertexBuffer[i].nor.y = buffer_nor[i * 3 + 1];
                     temp_mesh.vertexBuffer[i].nor.z = buffer_nor[i * 3 + 2];
                     temp_mesh.vertexBuffer[i].uv.u = buffer_tex[i * 2 + 0]; // VEC2
                     temp_mesh.vertexBuffer[i].uv.v = buffer_tex[i * 2 + 1];
+
+                    // Bonding box
+                    if(x<temp_mesh.boundingBoxA.x) temp_mesh.boundingBoxA.x=x;
+                    if(y<temp_mesh.boundingBoxA.y) temp_mesh.boundingBoxA.y=y;
+                    if(z<temp_mesh.boundingBoxA.z) temp_mesh.boundingBoxA.z=z;
+                    if(x>temp_mesh.boundingBoxB.x) temp_mesh.boundingBoxB.x=x;
+                    if(y>temp_mesh.boundingBoxB.y) temp_mesh.boundingBoxB.y=y;
+                    if(z>temp_mesh.boundingBoxB.z) temp_mesh.boundingBoxB.z=z;
                 }
+
+                temp_mesh.center = (temp_mesh.boundingBoxA + temp_mesh.boundingBoxB) * 0.5f;
 
                 if(primitive.material != -1)
                 {
@@ -222,6 +237,9 @@ void load_gltf(const char* fileName)
                 temp_mesh.indexCount = numIndices;
                 temp_mesh.vertexCount = numVertices;
                 temp_mesh.vertexBuffer = temp_mesh.vertexBuffer;
+
+                // Calculate the bounding box
+                VEC3 center;
 
                 gltfScene.meshes.push_back(temp_mesh);
 

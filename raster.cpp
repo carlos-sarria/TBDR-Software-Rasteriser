@@ -1,33 +1,9 @@
 #include "raster.h"
 #include <stdlib.h>
 
-struct TR_VERTEX
-{
-    VEC3 pos;
-    VEC2 uv;
-    float intensity;
-};
-
-struct RENDER_STATE
-{
-    float  *depthBuffer;
-    unsigned long *colorBuffer;
-
-    unsigned int frameWidth;
-    unsigned int frameHeight;
-
-    MATERIAL material;
-
-    VEC3 lightPosition;
-    VEC3 invLightPosition;
-
-    MATRIX worldMatrix;
-    MATRIX projectionMatrix;
-    MATRIX viewMatrix;
-} rs;
-
 unsigned int debug_colors[] = {0xFFFF0000,0xFF00FF00,0xFF0000FF,0xFFFFFF00,0xFFFF00FF,0xFF00FFFF,0xFF800000,0xFF008000,0xFF000080};
 unsigned int currColor = 0;
+RENDER_STATE rs;
 
 void rasterSetWorldMatrix(MATRIX m) { rs.worldMatrix = m; }
 
@@ -36,6 +12,7 @@ void rasterSetViewMatrix(MATRIX m) { rs.viewMatrix = m; }
 void rasterSetProjectionMatrix(MATRIX m) { rs.projectionMatrix = m; }
 
 void rasterSetLight(VEC3 pos) { rs.lightPosition = pos;};
+void rasterSetEye(VEC3 pos) { rs.eyePosition = pos;};
 
 void rasterInitialise(const int &width, const int &height, void *debugBuffer)
 {
@@ -112,32 +89,55 @@ inline bool rasterCulling (VEC3 v0, VEC3 v1, VEC3 v2)
     return false;
 }
 
-inline unsigned int blendPBR (unsigned int mem_pos, unsigned int U, unsigned int V)
+#define MAP(x,y,w,h) ((x<0||x>=1||y<0||y>=1) ? 0 : ((unsigned int)(x*w)+(unsigned int)(y*h)*w));
+
+inline unsigned int blendPBR (float U, float V)
 {
-    unsigned int tex_color, nor_color;
-    tex_color = (rs.material.baseColor.data==0) ? rs.material.color : rs.material.baseColor.data[U+V*rs.material.baseColor.width];
-    nor_color = (rs.material.normal.data==0) ? rs.material.color : rs.material.normal.data[U+V*rs.material.normal.width];
+    unsigned int map = MAP(U,V,rs.material.baseColor.width,rs.material.baseColor.height);
+    unsigned int tex_color = (rs.material.baseColor.data==0) ? rs.material.color : rs.material.baseColor.data[map];
+    unsigned int nor_color = (rs.material.normal.data==0) ? rs.material.color : rs.material.normal.data[map];
+    unsigned int met_color = (rs.material.metallicRoughness.data==0) ? rs.material.color : rs.material.metallicRoughness.data[map];
+    unsigned int emi_color = (rs.material.emissive.data==0) ? rs.material.color : rs.material.emissive.data[map];
 
-    VEC3 color(float(tex_color>>16&0xFF),float(tex_color>>8&0xFF),float(tex_color&0xFF));
+    VEC3 color      = UNPACK(tex_color);
+    VEC3 emissive   = UNPACK(emi_color);
+    VEC3 normal     = UNPACK(nor_color);
+    VEC3 metal      = UNPACK(met_color);
+    normal = (normal - 128.0f)*(1.0f/128.0f);
+    metal = metal * (1.0f/255.f);
+    //normal.normalize();
 
-    VEC3 normal;
-    normal.x = (float)(nor_color>>16&0xFF)-128.0f;
-    normal.y = (float)(nor_color>>8&0xFF)-128.0f;
-    normal.z = (float)(nor_color&0xFF)-128.0f;
-    normal.normalize();
+    //R = 2*(V dot N)*N - V
+    float f = 2.0f * (normal * rs.eyeInvPosition);
+    VEC3 rd = (normal*f) - rs.eyeInvPosition;
 
-    float shade = normal.dot(rs.invLightPosition) * 0.5f + 0.5f;
+    rd = (rd * 0.5f) + 0.5f;
 
-    unsigned int res_color = 0xFF<<24|int(shade*color.x)<<16|int(shade*color.y)<<8|int(shade*color.z);
+    map = MAP(rd.x, rd.y, rs.material.reflection.width ,rs.material.reflection.height);
+    unsigned int ref_color = rs.material.reflection.data[map];
+    VEC3 reflection = UNPACK(ref_color);
 
-    return res_color;
+    float shade = (normal * rs.lightInvPosition) * 0.5f + 0.5f;
+    shade *= metal.x; // x: occlusion
+
+    float trans_factor = metal.y*metal.z; // x: occlusion, y: roughness, z: metallicity
+    color = color*(1.0f-trans_factor)+ reflection * trans_factor;
+
+    float r = shade*color.x+emissive.x;
+    float g = shade*color.y+emissive.y;
+    float b = shade*color.z+emissive.z;
+
+    //return ref_color;//PACK(0xFF,255.0f*normal.x,255.0f*normal.y,255.0f*normal.z);
+    return PACK(0xFF,r,g,b);
 }
 
-inline unsigned int blend (unsigned int mem_pos, unsigned int U, unsigned int V, float shade)
+inline unsigned int blend (unsigned int mem_pos, float U, float V, float shade)
 {
     unsigned int tex_color;
     unsigned int source_color;
-    tex_color = (rs.material.baseColor.data==0) ? rs.material.color : rs.material.baseColor.data[U+V*rs.material.baseColor.width];
+    unsigned int texU = (unsigned int)(U*rs.material.baseColor.width) & (rs.material.baseColor.width-1);
+    unsigned int texV = (unsigned int)(V*rs.material.baseColor.height) & (rs.material.baseColor.height-1);
+    tex_color = (rs.material.baseColor.data==0) ? rs.material.color : rs.material.baseColor.data[texU+texV*rs.material.baseColor.width];
 
     if(rs.material.blend_mode==NONE && rs.material.smooth_shade==false) return tex_color;
 
@@ -147,7 +147,7 @@ inline unsigned int blend (unsigned int mem_pos, unsigned int U, unsigned int V,
 
     if(rs.material.smooth_shade)
     {
-        CLAMP(shade,0.0f,1.0f);
+        shade = CLAMP(shade,0.0f,1.0f);
         red *= shade;
         green *= shade;
         blue *= shade;
@@ -166,9 +166,9 @@ inline unsigned int blend (unsigned int mem_pos, unsigned int U, unsigned int V,
             green += s_green;
             blue  += s_blue;
 
-            CLAMP(red, 0.0f, 255.0);
-            CLAMP(green, 0.0f, 255.0);
-            CLAMP(blue, 0.0f, 255.0);
+            red = CLAMP(red, 0.0f, 255.0);
+            green = CLAMP(green, 0.0f, 255.0);
+            blue = CLAMP(blue, 0.0f, 255.0);
         }
 
         if (rs.material.blend_mode==ALPHA)
@@ -291,13 +291,13 @@ void rasterRasterizeIMR(unsigned short *indices, const unsigned int &numIndices,
             float invDB = 1.0f/depthB;
 
             VEC3 vU(v0.uv.u, v1.uv.u, v2.uv.u);
-            float texU = vU.dot(byA) * rs.material.baseColor.width * invD;
-            float texUB = vU.dot(byB) * rs.material.baseColor.width * invDB;
+            float texU = vU.dot(byA) * invD;
+            float texUB = vU.dot(byB) * invDB;
             float texU_incr = (texUB-texU)*d;
 
             VEC3 vV(v0.uv.v, v1.uv.v, v2.uv.v);
-            float texV = vV.dot(byA) * rs.material.baseColor.height * invD;
-            float texVB = vV.dot(byB) * rs.material.baseColor.height * invDB;
+            float texV = vV.dot(byA) * invD;
+            float texVB = vV.dot(byB) * invDB;
             float texV_incr = (texVB-texV)*d;
 
             VEC3 vInt(v0.intensity, v1.intensity, v2.intensity);
@@ -316,13 +316,9 @@ void rasterRasterizeIMR(unsigned short *indices, const unsigned int &numIndices,
                         // Update the depth buffer with the new value
                         rs.depthBuffer[incr] = depth;
 
-                        // Perspective correct texture coordinates
-                        unsigned int texU_int = (unsigned int)(texU) & (rs.material.baseColor.width-1);
-                        unsigned int texV_int = (unsigned int)(texV) & (rs.material.baseColor.height-1);
-
                         // Draw the pixel on the screen buffer
-                        rs.colorBuffer[incr] = blendPBR(incr, texU_int, texV_int); ;
-                        //rs.colorBuffer[incr] = blend(incr, texU_int, texV_int, shade);
+                        rs.colorBuffer[incr] = blendPBR(texU, texV);
+                        //rs.colorBuffer[incr] = blend(incr, texU, texV, shade);
                     }
                 }
 
@@ -336,15 +332,18 @@ void rasterRasterizeIMR(unsigned short *indices, const unsigned int &numIndices,
     }
 }
 
-void rasterTransform (VERTEX *v, const unsigned int &numVertices, TR_VERTEX *meshTVB)
+void rasterTransform (VERTEX *v, const unsigned int &numVertices, TR_VERTEX *meshTVB, VEC3 center)
 {
     MATRIX mMVP = rs.worldMatrix * rs.viewMatrix * rs.projectionMatrix;
 
     MATRIX invW = rs.worldMatrix;
     invW.inverse();
 
-    rs.invLightPosition = invW * rs.lightPosition;
-    rs.invLightPosition.normalize();
+    rs.lightInvPosition = invW * (rs.lightPosition-center);
+    rs.lightInvPosition.normalize();
+
+    rs.eyeInvPosition = invW * (rs.eyePosition-center);
+    rs.eyeInvPosition.normalize();
 
     for (int i = 0; i < numVertices; i++)
     {
@@ -354,7 +353,7 @@ void rasterTransform (VERTEX *v, const unsigned int &numVertices, TR_VERTEX *mes
         out.y = v[i].pos.x*mMVP.f[1] + v[i].pos.y*mMVP.f[5] + v[i].pos.z*mMVP.f[9]  + 1.0f*mMVP.f[13];
         out.z = v[i].pos.x*mMVP.f[2] + v[i].pos.y*mMVP.f[6] + v[i].pos.z*mMVP.f[10] + 1.0f*mMVP.f[14];
 
-        float shade = v[i].nor.dot(rs.invLightPosition) * 0.5 + 0.5f;
+        float shade = v[i].nor.dot(rs.lightInvPosition) * 0.5 + 0.5f;
 
         float div = 1.0f/out.z;
         meshTVB[i].pos.x = ceil(out.x * div * (rs.frameWidth/2) + rs.frameWidth/2); // ceil = pixel left-top convention
@@ -368,11 +367,11 @@ void rasterTransform (VERTEX *v, const unsigned int &numVertices, TR_VERTEX *mes
     }
 }
 
-void rasterSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsigned short *indices, const unsigned int &numIndices)
+void rasterSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsigned short *indices, const unsigned int &numIndices, VEC3 center)
 {
     TR_VERTEX *meshTVB = (TR_VERTEX *)malloc(numVertices*sizeof(TR_VERTEX));
 
-    rasterTransform (vertices, numVertices, meshTVB);
+    rasterTransform (vertices, numVertices, meshTVB, center);
     rasterRasterizeIMR (indices, numIndices, meshTVB);
 
     free(meshTVB);
