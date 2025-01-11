@@ -104,11 +104,11 @@ void bakeNormals (TEXTURE normalMap, unsigned short *indices, const unsigned int
                 {
                     VEC3 normal;
 
-                    // Normal maps have the base vector pointing up: (0,0,1.0) or (0,0,128) or (128,128,255)
+                    // Normal maps have the base vector pointing up: (190,190,255)
                     unsigned int tex_color = normalMap.data[incr];
-                    normal.x = (float(tex_color>>16&0xFF) - 128.0f) / 128.0f;
-                    normal.y = (float(tex_color>>8&0xFF)  - 128.0f) / 128.0f;
-                    normal.z = (float(tex_color&0xFF)     - 128.0f) / 128.0f - 0.0f;
+                    normal.x = (float(tex_color>>16&0xFF) - 128.0f - 62.0f) / 128.0f;
+                    normal.y = (float(tex_color>>8&0xFF)  - 128.0f - 62.0f) / 128.0f;
+                    normal.z = (float(tex_color&0xFF) - 128.0f - 128.0f) / 128.0f;
 
                     int r = int((n.x-normal.x) * 128.0f + 128.0f);
                     int g = int((n.y-normal.y) * 128.0f + 128.0f);

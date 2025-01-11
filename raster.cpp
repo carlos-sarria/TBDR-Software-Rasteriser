@@ -89,7 +89,7 @@ inline bool rasterCulling (VEC3 v0, VEC3 v1, VEC3 v2)
     return false;
 }
 
-#define MAP(x,y,w,h) ((x<0||x>=1||y<0||y>=1) ? 0 : ((unsigned int)(x*w)+(unsigned int)(y*h)*w));
+#define MAP(x,y,w,h) (((unsigned int)(x*w)&(w-1)) + ((unsigned int)(y*h)&(h-1)) *w );
 
 inline unsigned int blendPBR (float U, float V)
 {
@@ -103,13 +103,12 @@ inline unsigned int blendPBR (float U, float V)
     VEC3 emissive   = UNPACK(emi_color);
     VEC3 normal     = UNPACK(nor_color);
     VEC3 metal      = UNPACK(met_color);
-    normal = (normal - 128.0f)*(1.0f/128.0f);
-    metal = metal * (1.0f/255.f);
-    //normal.normalize();
+    normal = (normal - 128.0f)*(1.0f/128.0f); // from -1.0 to 1.0
+    metal = metal * (1.0f/255.f); // from 0.0 to 1.0
 
     //R = 2*(V dot N)*N - V
-    float f = 2.0f * (normal * rs.eyeInvPosition);
-    VEC3 rd = (normal*f) - rs.eyeInvPosition;
+    float f =  2.0f * (normal * rs.eyeInvPosition);
+    VEC3 rd =  normal*f-rs.eyeInvPosition;
 
     rd = (rd * 0.5f) + 0.5f;
 
@@ -118,16 +117,15 @@ inline unsigned int blendPBR (float U, float V)
     VEC3 reflection = UNPACK(ref_color);
 
     float shade = (normal * rs.lightInvPosition) * 0.5f + 0.5f;
-    shade *= metal.x; // x: occlusion
+    shade *= metal.x; // x: ambient occlusion
 
-    float trans_factor = metal.y*metal.z; // x: occlusion, y: roughness, z: metallicity
+    float trans_factor = metal.y*metal.z; // y: roughness, z: metallicity
     color = color*(1.0f-trans_factor)+ reflection * trans_factor;
 
     float r = shade*color.x+emissive.x;
     float g = shade*color.y+emissive.y;
     float b = shade*color.z+emissive.z;
 
-    //return ref_color;//PACK(0xFF,255.0f*normal.x,255.0f*normal.y,255.0f*normal.z);
     return PACK(0xFF,r,g,b);
 }
 
@@ -342,7 +340,8 @@ void rasterTransform (VERTEX *v, const unsigned int &numVertices, TR_VERTEX *mes
     rs.lightInvPosition = invW * (rs.lightPosition-center);
     rs.lightInvPosition.normalize();
 
-    rs.eyeInvPosition = invW * (rs.eyePosition-center);
+    rs.eyePosition = VEC3(0.0f,0.0f, 1.0f);
+    rs.eyeInvPosition = invW * rs.eyePosition;//(center-rs.eyePosition);
     rs.eyeInvPosition.normalize();
 
     for (int i = 0; i < numVertices; i++)

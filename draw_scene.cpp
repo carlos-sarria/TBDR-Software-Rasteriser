@@ -120,7 +120,6 @@ void draw_frame ()
         rasterSetProjectionMatrix(mProjection) ;
 
         rasterSetLight(gltfScene.lights[0].transform.translation);
-
         rasterSetEye(gltfScene.cameras[0].transform.translation);
 
         MATERIAL material;
