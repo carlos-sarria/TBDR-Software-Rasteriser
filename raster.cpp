@@ -103,29 +103,28 @@ inline unsigned int blendPBR (float U, float V)
     VEC3 emissive   = UNPACK(emi_color);
     VEC3 normal     = UNPACK(nor_color);
     VEC3 metal      = UNPACK(met_color);
-    normal = (normal - 128.0f)*(1.0f/128.0f); // from -1.0 to 1.0
+    normal = (normal-128.0f)*(1.0f/128.0f); // from -1.0 to 1.0
     metal = metal * (1.0f/255.f); // from 0.0 to 1.0
 
-    //R = 2*(V dot N)*N - V
-    float f =  2.0f * (normal * rs.eyeInvPosition);
-    VEC3 rd =  normal*f-rs.eyeInvPosition;
+    VEC3 rd = rs.worldMatrix*normal; // Spherical environtment map short-cut
+    rd.normalize();
+    rd = (rd*0.5f) + 0.5f;
 
-    rd = (rd * 0.5f) + 0.5f;
-
-    map = MAP(rd.x, rd.y, rs.material.reflection.width ,rs.material.reflection.height);
+    map = MAP(rd.x, -rd.y, rs.material.reflection.width ,rs.material.reflection.height);
     unsigned int ref_color = rs.material.reflection.data[map];
     VEC3 reflection = UNPACK(ref_color);
 
     float shade = (normal * rs.lightInvPosition) * 0.5f + 0.5f;
     shade *= metal.x; // x: ambient occlusion
 
-    float trans_factor = metal.y*metal.z; // y: roughness, z: metallicity
-    color = color*(1.0f-trans_factor)+ reflection * trans_factor;
+    float trans_factor = metal.y;//*metal.z; // y: roughness, z: metallicity
+    color = color * (1.0f-trans_factor) + reflection * trans_factor;
 
     float r = shade*color.x+emissive.x;
     float g = shade*color.y+emissive.y;
     float b = shade*color.z+emissive.z;
 
+    // return PACK(0xFF,shade*255.0f,shade*255.0f,shade*255.0f);
     return PACK(0xFF,r,g,b);
 }
 
