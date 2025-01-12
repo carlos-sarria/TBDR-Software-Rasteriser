@@ -73,10 +73,6 @@ void initialise_app(const char* gltfFile, unsigned int frameWidth, unsigned int 
 {
     load_gltf(gltfFile);
 
-    std::string uri = gltfScene.path+"\\reflection.dds";
-    loadDDS(uri.c_str(), reflection);
-    gltfScene.textures.push_back(reflection);
-
     SCREEN_HEIGHT = frameHeight;
     SCREEN_WIDTH = frameWidth;
 

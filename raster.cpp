@@ -91,50 +91,41 @@ inline bool rasterCulling (VEC3 v0, VEC3 v1, VEC3 v2)
 
 #define MAP(x,y,w,h) (((unsigned int)(x*w)&(w-1)) + ((unsigned int)(y*h)&(h-1)) *w );
 
-inline unsigned int blendPBR (float U, float V)
+#define FOCUS 0.01f
+inline unsigned int blendPBR (unsigned int U, unsigned int V)
 {
-    unsigned int map = MAP(U,V,rs.material.baseColor.width,rs.material.baseColor.height);
+    unsigned int map = U+V*rs.material.baseColor.width;
     unsigned int tex_color = (rs.material.baseColor.data==0) ? rs.material.color : rs.material.baseColor.data[map];
-    unsigned int nor_color = (rs.material.normal.data==0) ? rs.material.color : rs.material.normal.data[map];
-    unsigned int met_color = (rs.material.metallicRoughness.data==0) ? rs.material.color : rs.material.metallicRoughness.data[map];
-    unsigned int emi_color = (rs.material.emissive.data==0) ? rs.material.color : rs.material.emissive.data[map];
+    unsigned int nor_color = (rs.material.normal.data==0) ? 0xFFBEBEFF : rs.material.normal.data[map];
+    unsigned int met_color = (rs.material.metallicRoughness.data==0) ? 0xFFFFFFFF : rs.material.metallicRoughness.data[map];
 
     VEC3 color      = UNPACK(tex_color);
-    VEC3 emissive   = UNPACK(emi_color);
     VEC3 normal     = UNPACK(nor_color);
     VEC3 metal      = UNPACK(met_color);
     normal = (normal-128.0f)*(1.0f/128.0f); // from -1.0 to 1.0
     metal = metal * (1.0f/255.f); // from 0.0 to 1.0
 
-    VEC3 rd = rs.worldMatrix*normal; // Spherical environtment map short-cut
-    rd.normalize();
-    rd = (rd*0.5f) + 0.5f;
-
-    map = MAP(rd.x, -rd.y, rs.material.reflection.width ,rs.material.reflection.height);
-    unsigned int ref_color = rs.material.reflection.data[map];
-    VEC3 reflection = UNPACK(ref_color);
+    // Very faked specular
+    float specular = (normal * rs.eyeInvPosition) * 0.5f + 0.5f;
+    specular =  (specular < (1.0f-FOCUS)) ? 0.0f : (specular-(1.0f-FOCUS))*(1.0f/FOCUS)*255.0f;
 
     float shade = (normal * rs.lightInvPosition) * 0.5f + 0.5f;
     shade *= metal.x; // x: ambient occlusion
 
-    float trans_factor = metal.y;//*metal.z; // y: roughness, z: metallicity
-    color = color * (1.0f-trans_factor) + reflection * trans_factor;
+    float shininess = specular*metal.y*0.2f; // y: roughness, z: metallicity
 
-    float r = shade*color.x+emissive.x;
-    float g = shade*color.y+emissive.y;
-    float b = shade*color.z+emissive.z;
+    float r = shade*color.x + shininess;
+    float g = shade*color.y + shininess;
+    float b = shade*color.z + shininess;
 
-    // return PACK(0xFF,shade*255.0f,shade*255.0f,shade*255.0f);
     return PACK(0xFF,r,g,b);
 }
 
-inline unsigned int blend (unsigned int mem_pos, float U, float V, float shade)
+inline unsigned int blend (unsigned int mem_pos, unsigned int U, unsigned int V, float shade)
 {
     unsigned int tex_color;
     unsigned int source_color;
-    unsigned int texU = (unsigned int)(U*rs.material.baseColor.width) & (rs.material.baseColor.width-1);
-    unsigned int texV = (unsigned int)(V*rs.material.baseColor.height) & (rs.material.baseColor.height-1);
-    tex_color = (rs.material.baseColor.data==0) ? rs.material.color : rs.material.baseColor.data[texU+texV*rs.material.baseColor.width];
+    tex_color = (rs.material.baseColor.data==0) ? rs.material.color : rs.material.baseColor.data[U+V*rs.material.baseColor.width];
 
     if(rs.material.blend_mode==NONE && rs.material.smooth_shade==false) return tex_color;
 
@@ -288,13 +279,13 @@ void rasterRasterizeIMR(unsigned short *indices, const unsigned int &numIndices,
             float invDB = 1.0f/depthB;
 
             VEC3 vU(v0.uv.u, v1.uv.u, v2.uv.u);
-            float texU = vU.dot(byA) * invD;
-            float texUB = vU.dot(byB) * invDB;
+            float texU = vU.dot(byA) * invD * rs.material.baseColor.width;
+            float texUB = vU.dot(byB) * invDB * rs.material.baseColor.width;
             float texU_incr = (texUB-texU)*d;
 
             VEC3 vV(v0.uv.v, v1.uv.v, v2.uv.v);
-            float texV = vV.dot(byA) * invD;
-            float texVB = vV.dot(byB) * invDB;
+            float texV = vV.dot(byA) * invD * rs.material.baseColor.height;
+            float texVB = vV.dot(byB) * invDB * rs.material.baseColor.height;
             float texV_incr = (texVB-texV)*d;
 
             VEC3 vInt(v0.intensity, v1.intensity, v2.intensity);
@@ -314,8 +305,8 @@ void rasterRasterizeIMR(unsigned short *indices, const unsigned int &numIndices,
                         rs.depthBuffer[incr] = depth;
 
                         // Draw the pixel on the screen buffer
-                        rs.colorBuffer[incr] = blendPBR(texU, texV);
-                        //rs.colorBuffer[incr] = blend(incr, texU, texV, shade);
+                        rs.colorBuffer[incr] = blendPBR((unsigned int)texU&(rs.material.baseColor.width-1), (unsigned int)texV&(rs.material.baseColor.height-1));
+                        //rs.colorBuffer[incr] = blend(incr, (unsigned int)texU&(rs.material.baseColor.width-1), (unsigned int)texV&(rs.material.baseColor.height-1), shade);
                     }
                 }
 

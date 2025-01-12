@@ -73,7 +73,8 @@ static bool myTextureLoadingFunction(tinygltf::Image *image, const int image_idx
 
 TEXTURE texture;
 #if 1
-    std::string uri = gltfScene.path+"\\"+image->name+".dds";
+    std::string name = image->name.substr(0, image->name.rfind('.'));
+    std::string uri = gltfScene.path+"\\"+name+".dds";
     loadDDS(uri.c_str(), texture);
 #else  // PNG Format
     texture.data = (unsigned int *)malloc(size);//bytes;
