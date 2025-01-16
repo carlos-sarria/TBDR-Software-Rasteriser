@@ -139,7 +139,7 @@ void draw_frame ()
         mesh_count++;
     }
 
-    angle += 0.03f;
+    angle += 0.05f;
     numFrames++;
 
     if(clock()-start > 1000L) // 1 second

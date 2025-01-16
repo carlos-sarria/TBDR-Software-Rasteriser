@@ -258,7 +258,7 @@ void load_gltf(const char* fileName)
         camera.to = VEC3(0.0f, 0.0f, 0.0f);
         camera.yfov = 0.39959f;
         camera.zfar = 5000.0f;
-        camera.znear = 0.01f;
+        camera.znear = 0.1f;
 
         gltfScene.cameras.push_back(camera);
     }
