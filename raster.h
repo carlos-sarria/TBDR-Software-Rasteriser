@@ -3,6 +3,11 @@
 
 #include "math.h"
 
+#include <vector>
+
+#define PARAMETERBUFFER_SIZE 1000000
+#define TILE_SIZE 32
+
 struct VERTEX
 {
     VEC3 pos;
@@ -50,6 +55,21 @@ struct TR_VERTEX
     float intensity;
 };
 
+struct PARAMETER_BUFFER
+{
+    TR_VERTEX *vertices; // Transformed vertices: x,y,z, u,v, shade (6 floats)
+    uintptr_t * triPointers; // Triangle vertices pointers: v0, v1, v2, material (4 uints)
+    uintptr_t * tilePointers; // Tile link-list (one per triangle per tile): 1 next pointer, 1 triangle pointer (2 uints)
+    uintptr_t * tileSeeds; // Keep the last triangle pointers: 1 uint per tile
+    unsigned int currentVertex;
+    unsigned int currentTriangle;
+    unsigned int currentTile;
+    unsigned int numberTiles;
+    float invTile;
+    unsigned int tiledFrameHeight;
+    unsigned int tiledFrameWidth;
+};
+
 struct RENDER_STATE
 {
     float  *depthBuffer;
@@ -69,7 +89,13 @@ struct RENDER_STATE
     MATRIX worldMatrix;
     MATRIX projectionMatrix;
     MATRIX viewMatrix;
+
+    PARAMETER_BUFFER pb;
 };
+
+void rasterStartRender();
+
+void rasterEndRender();
 
 void rasterClear(unsigned int color=0x00000000, float depth=0.0f);
 

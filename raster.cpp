@@ -13,6 +13,7 @@ void rasterSetViewMatrix(MATRIX m) { rs.viewMatrix = m; }
 void rasterSetProjectionMatrix(MATRIX m) { rs.projectionMatrix = m; }
 
 void rasterSetLight(VEC3 pos) { rs.lightPosition = pos;};
+
 void rasterSetEye(VEC3 pos) { rs.eyePosition = pos;};
 
 void rasterInitialise(const int &width, const int &height, void *debugBuffer)
@@ -43,6 +44,14 @@ void rasterClear(unsigned int color, float depth)
         rs.depthBuffer[i]= depth;
         rs.colorBuffer[i] = color;
     }
+}
+
+void rasterStartRender()
+{
+}
+
+void rasterEndRender()
+{
 }
 
 void rasterSetMaterial(MATERIAL material)

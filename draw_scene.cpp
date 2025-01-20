@@ -99,6 +99,8 @@ void draw_frame ()
 
     mProjection.perspectiveFovRH(camera.yfov, aspectRatio, camera.znear, camera.zfar, isRotated);
 
+    rasterStartRender();
+
     rasterClear(0xFF200000);
 
     unsigned int mesh_count = 0;
@@ -138,6 +140,8 @@ void draw_frame ()
 
         mesh_count++;
     }
+
+    rasterEndRender();
 
     angle += 0.05f;
     numFrames++;
