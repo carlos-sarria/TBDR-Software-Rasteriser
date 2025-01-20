@@ -16,7 +16,7 @@ add_executable(rasteriser WIN32
     load_gltf.h
     draw_scene.cpp
     draw_scene.h
-    raster.cpp
+    rasterTBDR.cpp
     raster.h
     bake.cpp
     bake.h
