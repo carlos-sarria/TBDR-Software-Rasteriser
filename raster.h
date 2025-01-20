@@ -55,15 +55,21 @@ struct TR_VERTEX
     float intensity;
 };
 
+struct TILE_POINTER
+{
+    uintptr_t link;
+    uintptr_t pointer;
+};
+
 struct PARAMETER_BUFFER
 {
     TR_VERTEX *vertices; // Transformed vertices: x,y,z, u,v, shade (6 floats)
     uintptr_t * triPointers; // Triangle vertices pointers: v0, v1, v2, material (4 uints)
-    uintptr_t * tilePointers; // Tile link-list (one per triangle per tile): 1 next pointer, 1 triangle pointer (2 uints)
+    TILE_POINTER * tilePointers; // Tile link-list (one per triangle per tile): 1 next pointer, 1 triangle pointer (2 uints)
     uintptr_t * tileSeeds; // Keep the last triangle pointers: 1 uint per tile
     unsigned int currentVertex;
     unsigned int currentTriangle;
-    unsigned int currentTile;
+    unsigned int currentTilePointer;
     unsigned int numberTiles;
     float invTile;
     unsigned int tiledFrameHeight;

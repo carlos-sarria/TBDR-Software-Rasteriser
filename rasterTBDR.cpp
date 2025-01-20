@@ -33,10 +33,10 @@ void rasterInitialise(const int &width, const int &height, void *debugBuffer)
     rs.material.color = 0xFFFFFFFF;
     rs.material.smooth_shade = true;
 
-    rs.pb.numberTiles = width/TILE_SIZE * height/TILE_SIZE;
+    rs.pb.numberTiles = (width/TILE_SIZE) * (height/TILE_SIZE);
     rs.pb.vertices      = (TR_VERTEX *)malloc(PARAMETERBUFFER_SIZE);
     rs.pb.triPointers   = (uintptr_t *)malloc(PARAMETERBUFFER_SIZE);
-    rs.pb.tilePointers  = (uintptr_t *)malloc(PARAMETERBUFFER_SIZE);
+    rs.pb.tilePointers  = (TILE_POINTER *)malloc(PARAMETERBUFFER_SIZE);
     rs.pb.tileSeeds     = (uintptr_t *)malloc(rs.pb.numberTiles*sizeof(uintptr_t));
 }
 
@@ -201,7 +201,7 @@ inline void barycentric (VEC3 v0, VEC3 v1, VEC3 v2, VEC3 p, VEC3 &by)
     by.x = 1.0f - by.y - by.z;
 }
 
-void rasterRasterizeIMR(TR_VERTEX v0, TR_VERTEX v1, TR_VERTEX v2)
+inline void rasterRasterizeIMR(TR_VERTEX v0, TR_VERTEX v1, TR_VERTEX v2)
 {
     int total_height = v2.pos.y - v0.pos.y;
 
@@ -299,11 +299,11 @@ void rasterTransform (VERTEX *v, const unsigned int &numVertices, TR_VERTEX *mes
     }
 }
 
-void updateTiles(uintptr_t *triPointer)
+void updateTiles(unsigned int currentTraingle)
 {
-    TR_VERTEX v0 = *(TR_VERTEX*)(triPointer+0);
-    TR_VERTEX v1 = *(TR_VERTEX*)(triPointer+1);
-    TR_VERTEX v2 = *(TR_VERTEX*)(triPointer+2);
+    TR_VERTEX v0 = *(TR_VERTEX*)(rs.pb.triPointers[currentTraingle+0]);
+    TR_VERTEX v1 = *(TR_VERTEX*)(rs.pb.triPointers[currentTraingle+1]);
+    TR_VERTEX v2 = *(TR_VERTEX*)(rs.pb.triPointers[currentTraingle+2]);
 
     v0.pos = v0.pos * rs.pb.invTile;
     v1.pos = v1.pos * rs.pb.invTile;
@@ -342,14 +342,36 @@ void updateTiles(uintptr_t *triPointer)
             if(x>=0 && x<rs.pb.tiledFrameWidth)
             {
                 uintptr_t s = rs.pb.tileSeeds[tile];
-                rs.pb.tileSeeds[tile] = rs.pb.tilePointers[rs.pb.numberTiles];
-                rs.pb.tilePointers[rs.pb.numberTiles++] = s; // link-list, 0 marks end of list
-                rs.pb.tilePointers[rs.pb.numberTiles++] = *triPointer;
+                rs.pb.tileSeeds[tile] = (uintptr_t)&rs.pb.tilePointers[rs.pb.currentTilePointer];
+                rs.pb.tilePointers[rs.pb.currentTilePointer].link = s; // link-list, 0 marks end of list
+                rs.pb.tilePointers[rs.pb.currentTilePointer].pointer = rs.pb.triPointers[currentTraingle];
+                rs.pb.currentTilePointer++;
             }
 
             tile++;
         }
     }
+}
+
+// Depth comparison and varyings iterators
+void rasterISP(unsigned int tileID)
+{
+    uintptr_t s = rs.pb.tileSeeds[tileID];
+
+    while(s)
+    {
+        TILE_POINTER tilePointer = *(TILE_POINTER*)s;
+
+        uintptr_t *triPointer = (uintptr_t *)tilePointer.pointer;
+        s = tilePointer.link;
+
+        apiLog("TRI: %d %d %d\n", *((unsigned int*)triPointer+0), *((unsigned int*)triPointer+1), *((unsigned int*)triPointer+2));
+    }
+}
+
+// Final fragment shader and texture fetches
+void rasterTSP(unsigned int tileID)
+{
 }
 
 void perfectTiling(unsigned short *indices, const unsigned int &numIndices, TR_VERTEX *meshTVB)
@@ -372,7 +394,7 @@ void perfectTiling(unsigned short *indices, const unsigned int &numIndices, TR_V
         rs.pb.triPointers[rs.pb.currentTriangle++] = (uintptr_t)&meshTVB[in2];
         rs.pb.triPointers[rs.pb.currentTriangle++] = (uintptr_t)0; // TODO: Add list of scene materials
 
-        updateTiles(&rs.pb.triPointers[rs.pb.currentTriangle-4]);
+        updateTiles(rs.pb.currentTriangle-4);
     }
 }
 
@@ -391,9 +413,10 @@ void rasterSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsi
 void rasterStartRender()
 {
     rs.pb.currentVertex = 0;
-    rs.pb.currentTile = 0;
+    rs.pb.currentTilePointer = 0;
     rs.pb.currentTriangle = 0;
-    memset(rs.pb.tileSeeds,0,rs.pb.numberTiles*sizeof(uintptr_t));
+    rs.pb.currentTilePointer = 0;
+    for(int i=0;i<rs.pb.numberTiles;i++) rs.pb.tileSeeds[i] = (uintptr_t)0;
 
     rs.pb.invTile = 1.0f/TILE_SIZE;
     rs.pb.tiledFrameHeight = (float)rs.frameHeight*rs.pb.invTile;
@@ -410,4 +433,5 @@ void rasterEndRender()
         unsigned int material = 0; i++;
         rasterRasterizeIMR(v0,v1,v2);
     }
+    rasterISP(350);
 }
