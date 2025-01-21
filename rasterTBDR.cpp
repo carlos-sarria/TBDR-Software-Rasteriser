@@ -33,20 +33,22 @@ void rasterInitialise(const int &width, const int &height, void *debugBuffer)
     rs.material.color = 0xFFFFFFFF;
     rs.material.smooth_shade = true;
 
-    rs.pb.numberTiles = (width/TILE_SIZE) * (height/TILE_SIZE);
+    rs.pb.numberTiles   = (width/TILE_SIZE) * (height/TILE_SIZE);
     rs.pb.vertices      = (TR_VERTEX *)malloc(PARAMETERBUFFER_SIZE);
-    rs.pb.triPointers   = (uintptr_t *)malloc(PARAMETERBUFFER_SIZE);
+    rs.pb.triPointers   = (TRI_POINTER *)malloc(PARAMETERBUFFER_SIZE);
     rs.pb.tilePointers  = (TILE_POINTER *)malloc(PARAMETERBUFFER_SIZE);
     rs.pb.tileSeeds     = (uintptr_t *)malloc(rs.pb.numberTiles*sizeof(uintptr_t));
+    rs.pb.tileBuffer    = (TILE_BUFFER *)malloc(TILE_SIZE*TILE_SIZE*sizeof(TILE_BUFFER));
 }
 
 void rasterRelease()
 {
-    if(rs.depthBuffer) { free(rs.depthBuffer); rs.depthBuffer = nullptr;}
-    if(rs.pb.vertices) { free(rs.pb.vertices); rs.pb.vertices = nullptr;}
-    if(rs.pb.triPointers) { free(rs.pb.triPointers); rs.pb.triPointers = nullptr;}
-    if(rs.pb.tilePointers) { free(rs.pb.tilePointers); rs.pb.tilePointers = nullptr;}
-    if(rs.pb.tileSeeds) { free(rs.pb.tileSeeds); rs.pb.tileSeeds = nullptr;}
+    if(rs.depthBuffer)      {free(rs.depthBuffer); rs.depthBuffer = nullptr;}
+    if(rs.pb.vertices)      {free(rs.pb.vertices); rs.pb.vertices = nullptr;}
+    if(rs.pb.triPointers)   {free(rs.pb.triPointers); rs.pb.triPointers = nullptr;}
+    if(rs.pb.tilePointers)  {free(rs.pb.tilePointers); rs.pb.tilePointers = nullptr;}
+    if(rs.pb.tileSeeds)     {free(rs.pb.tileSeeds); rs.pb.tileSeeds = nullptr;}
+    if(rs.pb.tileBuffer)    {free(rs.pb.tileBuffer); rs.pb.tileBuffer = nullptr;}
 }
 
 void rasterClear(unsigned int color, float depth)
@@ -301,9 +303,9 @@ void rasterTransform (VERTEX *v, const unsigned int &numVertices, TR_VERTEX *mes
 
 void updateTiles(unsigned int currentTraingle)
 {
-    TR_VERTEX v0 = *(TR_VERTEX*)(rs.pb.triPointers[currentTraingle+0]);
-    TR_VERTEX v1 = *(TR_VERTEX*)(rs.pb.triPointers[currentTraingle+1]);
-    TR_VERTEX v2 = *(TR_VERTEX*)(rs.pb.triPointers[currentTraingle+2]);
+    TR_VERTEX v0 = *(TR_VERTEX*)(rs.pb.triPointers[currentTraingle].v0);
+    TR_VERTEX v1 = *(TR_VERTEX*)(rs.pb.triPointers[currentTraingle].v1);
+    TR_VERTEX v2 = *(TR_VERTEX*)(rs.pb.triPointers[currentTraingle].v2);
 
     v0.pos = v0.pos * rs.pb.invTile;
     v1.pos = v1.pos * rs.pb.invTile;
@@ -362,10 +364,8 @@ void rasterISP(unsigned int tileID)
     {
         TILE_POINTER tilePointer = *(TILE_POINTER*)s;
 
-        uintptr_t *triPointer = (uintptr_t *)tilePointer.pointer;
+        TRI_POINTER triPointer = tilePointer.pointer;
         s = tilePointer.link;
-
-        apiLog("TRI: %d %d %d\n", *((unsigned int*)triPointer+0), *((unsigned int*)triPointer+1), *((unsigned int*)triPointer+2));
     }
 }
 
@@ -376,6 +376,8 @@ void rasterTSP(unsigned int tileID)
 
 void perfectTiling(unsigned short *indices, const unsigned int &numIndices, TR_VERTEX *meshTVB)
 {
+    rs.pb.materials.push_back(rs.material);
+
     for (int i = 0; i < numIndices;)
     {
         unsigned short in0 = indices[i++];
@@ -389,12 +391,12 @@ void perfectTiling(unsigned short *indices, const unsigned int &numIndices, TR_V
         if (meshTVB[in1].pos.y > meshTVB[in2].pos.y) SWAP(in1, in2);
 
         // Store this triangle
-        rs.pb.triPointers[rs.pb.currentTriangle++] = (uintptr_t)&meshTVB[in0];
-        rs.pb.triPointers[rs.pb.currentTriangle++] = (uintptr_t)&meshTVB[in1];
-        rs.pb.triPointers[rs.pb.currentTriangle++] = (uintptr_t)&meshTVB[in2];
-        rs.pb.triPointers[rs.pb.currentTriangle++] = (uintptr_t)0; // TODO: Add list of scene materials
+        rs.pb.triPointers[rs.pb.currentTriangle].v0 = (uintptr_t)&meshTVB[in0];
+        rs.pb.triPointers[rs.pb.currentTriangle].v1 = (uintptr_t)&meshTVB[in1];
+        rs.pb.triPointers[rs.pb.currentTriangle].v2 = (uintptr_t)&meshTVB[in2];
+        rs.pb.triPointers[rs.pb.currentTriangle].material = rs.pb.materials.size()-1;
 
-        updateTiles(rs.pb.currentTriangle-4);
+        updateTiles(rs.pb.currentTriangle++);
     }
 }
 
@@ -425,13 +427,12 @@ void rasterStartRender()
 
 void rasterEndRender()
 {
-    for(int i=0; i<rs.pb.currentTriangle;)
+    for(int i=0; i<rs.pb.currentTriangle;i++)
     {
-        TR_VERTEX v0 = *(TR_VERTEX *)rs.pb.triPointers[i++];
-        TR_VERTEX v1 = *(TR_VERTEX *)rs.pb.triPointers[i++];
-        TR_VERTEX v2 = *(TR_VERTEX *)rs.pb.triPointers[i++];
-        unsigned int material = 0; i++;
-        rasterRasterizeIMR(v0,v1,v2);
+        TR_VERTEX v0 = *(TR_VERTEX *)rs.pb.triPointers[i].v0;
+        TR_VERTEX v1 = *(TR_VERTEX *)rs.pb.triPointers[i].v1;
+        TR_VERTEX v2 = *(TR_VERTEX *)rs.pb.triPointers[i].v2;
+        rasterRasterizeIMR(v0,v1,v2); // REMOVEME
     }
     rasterISP(350);
 }

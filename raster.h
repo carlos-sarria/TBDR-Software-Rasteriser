@@ -2,7 +2,6 @@
 #define RASTER_H
 
 #include "math.h"
-
 #include <vector>
 
 #define PARAMETERBUFFER_SIZE 1000000
@@ -55,22 +54,44 @@ struct TR_VERTEX
     float intensity;
 };
 
+struct TILE_BUFFER
+{
+    float depth;
+    float u;
+    float v;
+    unsigned int material;
+    unsigned int color;
+};
+
+struct TRI_POINTER
+{
+    uintptr_t v0;
+    uintptr_t v1;
+    uintptr_t v2;
+    unsigned int material;
+};
+
 struct TILE_POINTER
 {
     uintptr_t link;
-    uintptr_t pointer;
+    TRI_POINTER pointer;
 };
 
 struct PARAMETER_BUFFER
 {
-    TR_VERTEX *vertices; // Transformed vertices: x,y,z, u,v, shade (6 floats)
-    uintptr_t * triPointers; // Triangle vertices pointers: v0, v1, v2, material (4 uints)
-    TILE_POINTER * tilePointers; // Tile link-list (one per triangle per tile): 1 next pointer, 1 triangle pointer (2 uints)
-    uintptr_t * tileSeeds; // Keep the last triangle pointers: 1 uint per tile
+    TR_VERTEX       * vertices;     // Transformed vertices: x,y,z, u,v, shade (6 floats)
+    TRI_POINTER     * triPointers;  // Triangle vertices pointers: v0, v1, v2, material (4 uints)
+    TILE_POINTER    * tilePointers; // Tile link-list (one per triangle per tile): 1 next pointer, 1 triangle pointer (2 uints)
+    uintptr_t       * tileSeeds;    // Keep the last triangle pointers: 1 uint per tile
+    TILE_BUFFER     * tileBuffer;   // The rectangular tile to rasterise in
     unsigned int currentVertex;
     unsigned int currentTriangle;
     unsigned int currentTilePointer;
     unsigned int numberTiles;
+
+    unsigned int numberMaterials;
+    std::vector<MATERIAL> materials;
+
     float invTile;
     unsigned int tiledFrameHeight;
     unsigned int tiledFrameWidth;
