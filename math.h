@@ -41,32 +41,6 @@ public:
     VEC2INT  normalize() { float l = lenght(); if(l==0.0f) { x = x/l;  y=y/l; }; return *this;}
 } ;
 
-class VEC2
-{
-public:
-    union{
-        float x;
-        float u;
-    };
-    union{
-        float y;
-        float v;
-    };
-
-    VEC2() { x= 0.0f; y = 0.0f; }
-    VEC2(float vx, float vy) { x=vx; y=vy; }
-    VEC2(const VEC2 &inV2) { x= inV2.x; y = inV2.y; }
-
-    VEC2 operator = (const VEC2& inV2) { x = inV2.x; y = inV2.y; return *this;}
-    bool operator == (const VEC2& inV2) { return (x == inV2.x && y == inV2.y); }
-    VEC2 operator + (const VEC2& inV2)  const { return VEC2(x+inV2.x, y+inV2.y); }
-    VEC2 operator - (const VEC2& inV2)  const { return VEC2(x-inV2.x, y-inV2.y); }
-
-    float lenght() { return sqrt(x*x+y*y); }
-    VEC2  normalize() { float l = lenght(); if(l==0.0f) { x = x/l;  y=y/l; }; return *this;}
-
-} ;
-
 class VEC3
 {
 public:
@@ -90,6 +64,8 @@ public:
     float lenght() { return sqrt(x*x+y*y+z*z); }
     VEC3&  normalize() { float l = lenght(); if(l!=0.0f){ x = x/l;  y=y/l; z=z/l; }; return *this;}
     float dot(const VEC3 &inV3) {return (x*inV3.x + y*inV3.y + z*inV3.z);}
+    void ceil() {x=ceilf(x); y=ceilf(y); z=ceilf(z);}
+    void trunc() {x=truncf(x); y=truncf(y); z=truncf(z);}
     const VEC3  cross(const VEC3 &inV3) {
         VEC3 vOut;
         vOut.x = y * inV3.z - z * inV3.y;
@@ -98,6 +74,36 @@ public:
         return vOut;
     }
 };
+
+class VEC2
+{
+public:
+    union{
+        float x;
+        float u;
+    };
+    union{
+        float y;
+        float v;
+    };
+
+    VEC2() { x= 0.0f; y = 0.0f; }
+    VEC2(float vx, float vy) { x=vx; y=vy; }
+    VEC2(const VEC2 &inV2) { x= inV2.x; y = inV2.y; }
+    VEC2(const VEC3 &inV3) { x= inV3.x; y = inV3.y; }
+
+    VEC2 operator = (const VEC2& inV2) { x = inV2.x; y = inV2.y; return *this;}
+    bool operator == (const VEC2& inV2) { return (x == inV2.x && y == inV2.y); }
+    VEC2 operator + (const VEC2& inV2)  const { return VEC2(x+inV2.x, y+inV2.y); }
+    VEC2 operator - (const VEC2& inV2)  const { return VEC2(x-inV2.x, y-inV2.y); }
+    const float operator * (const VEC2& inV2) const { return (x*inV2.x+y*inV2.y);}
+    const VEC2 operator * (float const& f) const { return VEC2(x*f, y*f);}
+
+    float lenght() { return sqrt(x*x+y*y); }
+    VEC2  normalize() { float l = lenght(); if(l==0.0f) { x = x/l;  y=y/l; }; return *this;}
+    void trunc() {x=truncf(x); y=truncf(y); }
+
+} ;
 
 class QUATERNION
 {

@@ -65,16 +65,16 @@ struct TILE_BUFFER
 
 struct TRI_POINTER
 {
-    uintptr_t v0;
-    uintptr_t v1;
-    uintptr_t v2;
+    TR_VERTEX *v0;
+    TR_VERTEX *v1;
+    TR_VERTEX *v2;
     unsigned int material;
 };
 
 struct TILE_POINTER
 {
-    uintptr_t link;
-    TRI_POINTER pointer;
+    uintptr_t next;
+    TRI_POINTER *pointer;
 };
 
 struct PARAMETER_BUFFER

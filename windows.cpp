@@ -74,14 +74,17 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
 	if (!RegisterClass(&window_class)) { return (int) GetLastError(); }
 
+    RECT rect = {0, 0, 1024, 768};
+    AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, false);
+
 	HWND window_handle = CreateWindow(
 		window_class.lpszClassName,
         "Software Rasterizer",
 		WS_OVERLAPPEDWINDOW | WS_VISIBLE,
 		CW_USEDEFAULT,
 		CW_USEDEFAULT,
-        1024,
-        768,
+        rect.right - rect.left,
+        rect.bottom - rect.top,
 		NULL,
 		NULL,
 		hInstance,
