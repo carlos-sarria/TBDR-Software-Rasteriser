@@ -242,67 +242,15 @@ void rasterTransform (VERTEX *v, const unsigned int &numVertices, TR_VERTEX *mes
             meshTVB[i].intensity = shade * div;
     }
 }
-void perfectTiling(TRI_POINTER *currentTraingle)
+
+inline bool refineTiling(VEC3 p0, VEC3 p1, VEC3 p2, unsigned int tileX, unsigned int tileY)
 {
-    VEC2 p0(currentTraingle->v0->pos);
-    VEC2 p1(currentTraingle->v1->pos);
-    VEC2 p2(currentTraingle->v2->pos);
+    if(tileX<0 || tileX>=rs.pb.tiledFrameWidth || tileY<0 || tileY>=rs.pb.tiledFrameHeight) return false;
 
-    p0 = p0 * rs.pb.invTile;
-    p1 = p1 * rs.pb.invTile;
-    p2 = p2 * rs.pb.invTile;
-
-    int a, b, topA, topB, tempA, tempB;
-
-    if(p0.y==p1.y)
-    {
-        topA = truncf(p0.x);
-        topB = truncf(p1.x);
-    }
-    else
-    {
-        topA = truncf(p0.x);
-        topB = truncf(p0.x);
-    }
-
-    for (int y = truncf(p0.y); y <= truncf(p2.y)+1; y++)
-    {
-        if(y<0 || y>=rs.pb.tiledFrameHeight) continue;
-
-        float slope1 = (y < p1.y && p0.y!=p1.y) ? ((p0.x-p1.x)/(p0.y-p1.y)) : ((p1.x-p2.x)/(p1.y-p2.y));
-        float slope2 = (p0.x-p2.x)/(p0.y-p2.y);
-
-        tempA = truncf((y-p2.y)*slope2+p2.x);
-        tempB = truncf((y-p1.y)*slope1+p1.x);
-
-        if (tempA > tempB) SWAP(tempA, tempB);
-
-        a =  (tempA>topA) ? topA : tempA;
-        b =  (tempB<topB) ? topB : tempB;
-
-        topA = tempA;
-        topB = tempB;
-
-        a = a-1;
-        b = b+1;
-
-        unsigned long tile = (a + (y-1) * rs.pb.tiledFrameWidth);
-
-        for (int x = a; x <= b; x++)
-        {
-            if(x>=0 && x<rs.pb.tiledFrameWidth && tile<rs.pb.numberTiles)
-            {
-                uintptr_t s = rs.pb.tileSeeds[tile];
-                rs.pb.tileSeeds[tile] = (uintptr_t)&rs.pb.tilePointers[rs.pb.currentTilePointer];
-                rs.pb.tilePointers[rs.pb.currentTilePointer].next = s; // link-list, 0 marks end of list
-                rs.pb.tilePointers[rs.pb.currentTilePointer].pointer = currentTraingle;
-                rs.pb.currentTilePointer++;
-            }
-            tile++;
-        }
-    }
+    return true;
 }
-void perfectTilingBB(TRI_POINTER *currentTraingle)
+
+void perfectTiling(TRI_POINTER *currentTraingle)
 {
     VEC3 p0(currentTraingle->v0->pos);
     VEC3 p1(currentTraingle->v1->pos);
@@ -321,7 +269,8 @@ void perfectTilingBB(TRI_POINTER *currentTraingle)
         for (int x = a.x; x<=b.x; x++)
         {
             unsigned int tile = x+y*rs.pb.tiledFrameWidth;
-            if(x>=0 && x<rs.pb.tiledFrameWidth && tile<rs.pb.numberTiles)
+
+            if (refineTiling(p0, p1, p2, x, y))
             {
                 uintptr_t s = rs.pb.tileSeeds[tile];
                 rs.pb.tileSeeds[tile] = (uintptr_t)&rs.pb.tilePointers[rs.pb.currentTilePointer];
@@ -329,6 +278,7 @@ void perfectTilingBB(TRI_POINTER *currentTraingle)
                 rs.pb.tilePointers[rs.pb.currentTilePointer].pointer = currentTraingle;
                 rs.pb.currentTilePointer++;
             }
+
             tile++;
         }
     }
@@ -354,17 +304,19 @@ bool rasterISP(unsigned int tileX, unsigned int tileY)
         TR_VERTEX *v2 = triPointer->v2;
         unsigned int material = triPointer->material;
 
+        VEC3 p0(v0->pos), p1(v1->pos), p2(v2->pos);
+
         VEC3 vD(v0->pos.z, v1->pos.z, v2->pos.z);
         VEC3 vU(v0->uv.u, v1->uv.u, v2->uv.u);
         VEC3 vV(v0->uv.v, v1->uv.v, v2->uv.v);
 
-        VEC3 pA(a.x,a.y,0.0f), pB(b.x,a.y,0.0f), pC(a.x,b.y,0.0f), bryA, bryB, bryC;
+        double d = 1.0f/TILE_SIZE;
 
-        barycentric(v0->pos, v1->pos, v2->pos, pA, bryA);
-        barycentric(v0->pos, v1->pos, v2->pos, pB, bryB);
-        barycentric(v0->pos, v1->pos, v2->pos, pC, bryC);
+        VEC3 pA(a.x,a.y,0.0f), pB(b.x-(1.0f/TILE_SIZE),a.y,0.0f), pC(a.x,b.y-(1.0f/TILE_SIZE),0.0f), bryA, bryB, bryC;
 
-        float d = 1.0f/TILE_SIZE;
+        barycentric(p0, p1, p2, pA, bryA);
+        barycentric(p0, p1, p2, pB, bryB);
+        barycentric(p0, p1, p2, pC, bryC);
 
         float bryX_incrx = (bryB.x-bryA.x)*d;
         float bryX_incry = (bryC.x-bryA.x)*d-(bryB.x-bryA.x);
@@ -375,22 +327,41 @@ bool rasterISP(unsigned int tileX, unsigned int tileY)
         float bryZ_incrx = (bryB.z-bryA.z)*d;
         float bryZ_incry = (bryC.z-bryA.z)*d-(bryB.z-bryA.z);
 
+        float D = vD.dot(bryA);
+        float dB = vD.dot(bryB);
+        float dC = vD.dot(bryC);
+        float D_incrx = (dB-D)*d;
+        float D_incry = (dC-D)*d-(dB-D);
+
+        float U = vU.dot(bryA);
+        float uB = vU.dot(bryB);
+        float uC = vU.dot(bryC);
+        float U_incrx = (uB-U)*d;
+        float U_incry = (uC-U)*d-(uB-U);
+
+        float V = vV.dot(bryA);
+        float vB = vV.dot(bryB);
+        float vC = vV.dot(bryC);
+        float V_incrx = (vB-V)*d;
+        float V_incry = (vC-V)*d-(vB-V);
+
         TILE_BUFFER *tf_ptr = rs.pb.tileBuffer;
 
         for(int y=a.y; y<b.y; y++)
         {
             for(int x=a.x; x<b.x; x++)
             {
-                if(bryA.x>=0.0f && bryA.y>=0.0f && bryA.z>=0.0f)
+                //VEC3 p(x,y,0.0f); barycentric(p0, p1, p2, p, bryA); // TEST
+                if(!(bryA.x<0.0 || bryA.y<0.0 || bryA.z<0.0))
                 {
-                    float depth  =  vD.dot(bryA);
+                    float depth  =  D;//vD.dot(bryA);
 
                     if(depth>=tf_ptr->depth) // Depth comparison GREATER-EQUAL
                     {
                         // Update the depth buffer with the new value
                         tf_ptr->depth = depth;
-                        tf_ptr->u = vU.dot(bryA);
-                        tf_ptr->v = vV.dot(bryA);
+                        tf_ptr->u = U;//vU.dot(bryA);
+                        tf_ptr->v = V;//vV.dot(bryA);
                         tf_ptr->material = material;
                     }
                 }
@@ -398,10 +369,16 @@ bool rasterISP(unsigned int tileX, unsigned int tileY)
                 bryA.x += bryX_incrx;
                 bryA.y += bryY_incrx;
                 bryA.z += bryZ_incrx;
+                D += D_incrx;
+                U += U_incrx;
+                V += V_incrx;
             }
             bryA.x += bryX_incry;
             bryA.y += bryY_incry;
             bryA.z += bryZ_incry;
+            D += D_incry;
+            U += U_incry;
+            V += V_incry;
         }
         if(next == 0) break;
     }
@@ -427,7 +404,7 @@ void rasterTSP(unsigned int tileX, unsigned int tileY)
 
                 rs.colorBuffer[x+y*rs.frameWidth] = blendPBR(u,v);
             }
-            // else
+            // else  // TEST
             // {
             //     rs.colorBuffer[x+y*rs.frameWidth] = 0xFFFF0000;
             // }
@@ -458,7 +435,7 @@ void rasterTA(unsigned short *indices, const unsigned int &numIndices, TR_VERTEX
         rs.pb.triPointers[rs.pb.currentTriangle].v2 = &meshTVB[in2];
         rs.pb.triPointers[rs.pb.currentTriangle].material = rs.pb.materials.size()-1;
 
-        perfectTilingBB(&rs.pb.triPointers[rs.pb.currentTriangle]);
+        perfectTiling(&rs.pb.triPointers[rs.pb.currentTriangle]);
         rs.pb.currentTriangle++;
     }
 }
