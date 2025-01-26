@@ -403,27 +403,6 @@ void rasterTA(unsigned short *indices, const unsigned int &numIndices, TR_VERTEX
     }
 }
 
-void apiSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsigned short *indices, const unsigned int &numIndices, VEC3 center)
-{
-#if 1
-    // Allocating the tranformed vertices sequetially
-    TR_VERTEX *transformed = rs.pb.vertices + rs.pb.currentVertex*sizeof(TR_VERTEX);
-    transform (vertices, numVertices, transformed, center);
-    rs.pb.currentVertex += numVertices;
-
-    // Procesing the triangle list (also sequetially)
-    rasterTA(indices, numIndices, transformed);
-#else // TEST
-    float div = 0.1f;
-    rs.pb.vertices[1] = {VEC3(10.0f,710.0f,0.1f), VEC2(1.0f*div,1.0f*div), 0.0f};
-    rs.pb.vertices[0] = {VEC3(512.0f,10.0f,0.1f),   VEC2(0.5f*div,0.0f*div), 0.0f};
-    rs.pb.vertices[2] = {VEC3(1000.0f,510.0f,0.1f),   VEC2(0.0f*div,1.0f*div), 0.0f};
-    unsigned short i[3] = {0,1,2};
-    rasterTA(i, 1, rs.pb.vertices);
-#endif
-
-}
-
 ///////////////////////////////////
 /// External API
 ///////////////////////////////////
@@ -504,10 +483,32 @@ void apiEndRender()
     {
         for (int x=0; x<rs.pb.tiledFrameWidth; x++)
         {
-            memset(rs.pb.tileBuffer,0,TILE_SIZE*TILE_SIZE*sizeof(TILE_BUFFER));
+            memset(rs.pb.tileBuffer,0,TILE_SIZE*TILE_SIZE*sizeof(TILE_BUFFER)); // clean up tile buffer
             if(rasterISP(x,y)) rasterTSP(x,y);
         }
     }
 }
+
+void apiSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsigned short *indices, const unsigned int &numIndices, VEC3 center)
+{
+#if 1
+    // Transform vertices and allocate them sequentially
+    TR_VERTEX *transformed = rs.pb.vertices + rs.pb.currentVertex*sizeof(TR_VERTEX);
+    transform (vertices, numVertices, transformed, center);
+    rs.pb.currentVertex += numVertices;
+
+    // Procesing the triangle list (store also sequentially)
+    rasterTA(indices, numIndices, transformed);
+
+#else // TEST single triangle
+    float div = 0.1f;
+    rs.pb.vertices[1] = {VEC3(10.0f,710.0f,0.1f), VEC2(1.0f*div,1.0f*div), 0.0f};
+    rs.pb.vertices[0] = {VEC3(512.0f,10.0f,0.1f),   VEC2(0.5f*div,0.0f*div), 0.0f};
+    rs.pb.vertices[2] = {VEC3(1000.0f,510.0f,0.1f),   VEC2(0.0f*div,1.0f*div), 0.0f};
+    unsigned short i[3] = {0,1,2};
+    rasterTA(i, 1, rs.pb.vertices);
+#endif
+}
+
 
 
