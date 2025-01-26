@@ -243,7 +243,7 @@ void rasterTransform (VERTEX *v, const unsigned int &numVertices, TR_VERTEX *mes
     }
 }
 
-#define SIGN(x,y) ((((x2-x1)*(y1-y)-(x1-x)*(y2-y1))<0)?-1:1)
+#define LINE_TEST(x,y) ((((x2-x1)*(y1-y)-(x1-x)*(y2-y1))<0)?-1:1)
 inline bool refineTiling(VEC3 p0, VEC3 p1, VEC3 p2, unsigned int tileX, unsigned int tileY)
 {
     if(tileX<0 || tileX>=rs.pb.tiledFrameWidth || tileY<0 || tileY>=rs.pb.tiledFrameHeight) return false;
@@ -254,46 +254,32 @@ inline bool refineTiling(VEC3 p0, VEC3 p1, VEC3 p2, unsigned int tileX, unsigned
     VEC2 a(tileX*TILE_SIZE, tileY*TILE_SIZE);
     VEC2 b(a.x+TILE_SIZE, a.y+TILE_SIZE);
 
-    int sign = 0, addSign = 0;
+    int totalSign[3] = {0,0,0};
     float x1,x2,y1,y2;
 
-    // touching line p0-p1
-    x1 = p0.x; y1 = p0.y;
+
+    // touching line p1-p0
+    x1 = p1.x; y1 = p1.y;
+    x2 = p0.x; y2 = p0.y;
+    totalSign[0] = LINE_TEST(a.x,a.y) + LINE_TEST(a.x,b.y) + LINE_TEST(b.x,a.y) + LINE_TEST(b.x,b.y);
+
+    // touching line p2-p1
+    x1 = p2.x; y1 = p2.y;
     x2 = p1.x; y2 = p1.y;
-    sign += SIGN(a.x,a.y);
-    sign += SIGN(a.x,b.y);
-    sign += SIGN(b.x,a.y);
-    sign += SIGN(b.x,b.y);
-    if(abs(sign)<4) return true;
+    totalSign[1] = LINE_TEST(a.x,a.y) + LINE_TEST(a.x,b.y) + LINE_TEST(b.x,a.y) + LINE_TEST(b.x,b.y);
 
     // touching line p0-p2
-    sign = 0;
     x1 = p0.x; y1 = p0.y;
     x2 = p2.x; y2 = p2.y;
-    sign += SIGN(a.x,a.y);
-    sign += SIGN(a.x,b.y);
-    sign += SIGN(b.x,a.y);
-    sign += SIGN(b.x,b.y);
-    if(abs(sign)<4) return true;
+    totalSign[2] = LINE_TEST(a.x,a.y) + LINE_TEST(a.x,b.y) + LINE_TEST(b.x,a.y) + LINE_TEST(b.x,b.y);
 
-    // touching line p1-p2
-    sign = 0;
-    x1 = p1.x; y1 = p1.y;
-    x2 = p2.x; y2 = p2.y;
-    sign += SIGN(a.x,a.y);
-    sign += SIGN(a.x,b.y);
-    sign += SIGN(b.x,a.y);
-    sign += SIGN(b.x,b.y);
-    if(abs(sign)<4) return true;
+    // Edge comparison that guarantees it is inside the triangle only.
+    if(abs(totalSign[0])!=4 && (totalSign[1]==-4||abs(totalSign[1])!=4) && (totalSign[2]==-4||abs(totalSign[2])!=4)) return true; // edge 1
+    if(abs(totalSign[1])!=4 && (totalSign[2]==-4||abs(totalSign[2])!=4) && (totalSign[0]==-4||abs(totalSign[0])!=4)) return true; // edge 2
+    if(abs(totalSign[2])!=4 && (totalSign[0]==-4||abs(totalSign[0])!=4) && (totalSign[1]==-4||abs(totalSign[1])!=4)) return true; // edge 3
+    if(totalSign[0]==-4 && totalSign[1]==-4 && totalSign[2]==-4) return true; // fully inside: all -4
 
-    if (abs(addSign)==12) return true;
-
-    // Inside the triangle. No need to check all four vertices as these tiles are fully inside or fully outside.
-    VEC3 p(a.x,a.y,0.0f), by;
-    barycentric (p0, p1, p2, p, by);
-    if(by.x<0||by.y<0||by.z<0) return false;
-
-    return true;
+    return false; // outside
 }
 
 void perfectTiling(TRI_POINTER *currentTraingle)
@@ -471,10 +457,6 @@ void rasterTA(unsigned short *indices, const unsigned int &numIndices, TR_VERTEX
 
         if (rasterCulling(meshTVB[in0].pos, meshTVB[in1].pos, meshTVB[in2].pos)) continue;
 
-        if (meshTVB[in0].pos.y > meshTVB[in1].pos.y) SWAP(in0, in1);
-        if (meshTVB[in0].pos.y > meshTVB[in2].pos.y) SWAP(in0, in2);
-        if (meshTVB[in1].pos.y > meshTVB[in2].pos.y) SWAP(in1, in2);
-
         // Store this triangle
         rs.pb.triPointers[rs.pb.currentTriangle].v0 = &meshTVB[in0];
         rs.pb.triPointers[rs.pb.currentTriangle].v1 = &meshTVB[in1];
@@ -496,11 +478,11 @@ void rasterSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsi
 
     // Procesing the triangle list (also sequetially)
     rasterTA(indices, numIndices, transformed);
-#else // TESTING
+#else // TEST
     float div = 0.1f;
-    rs.pb.vertices[0] = {VEC3(1000.0f,310.0f,0.1f), VEC2(1.0f*div,1.0f*div), 0.0f};
-    rs.pb.vertices[1] = {VEC3(512.0f,32.0f,0.1f),   VEC2(0.5f*div,0.0f*div), 0.0f};
-    rs.pb.vertices[2] = {VEC3(28.0f,310.0f,0.1f),   VEC2(0.0f*div,1.0f*div), 0.0f};
+    rs.pb.vertices[1] = {VEC3(10.0f,710.0f,0.1f), VEC2(1.0f*div,1.0f*div), 0.0f};
+    rs.pb.vertices[0] = {VEC3(512.0f,10.0f,0.1f),   VEC2(0.5f*div,0.0f*div), 0.0f};
+    rs.pb.vertices[2] = {VEC3(1000.0f,510.0f,0.1f),   VEC2(0.0f*div,1.0f*div), 0.0f};
     unsigned short i[3] = {0,1,2};
     rasterTA(i, 1, rs.pb.vertices);
 #endif
