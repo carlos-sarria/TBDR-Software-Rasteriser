@@ -76,7 +76,7 @@ void initialise_app(const char* gltfFile, unsigned int frameWidth, unsigned int 
     SCREEN_HEIGHT = frameHeight;
     SCREEN_WIDTH = frameWidth;
 
-    rasterInitialise(frameWidth, frameHeight, frameBuffer);
+    apiInitialise(frameWidth, frameHeight, frameBuffer);
 
     for(MESH& mesh : gltfScene.meshes)
     {
@@ -99,9 +99,9 @@ void draw_frame ()
 
     mProjection.perspectiveFovRH(camera.yfov, aspectRatio, camera.znear, camera.zfar, isRotated);
 
-    rasterStartRender();
+    apiStartRender();
 
-    rasterClear(0xFF200000);
+    apiClear(0xFF200000);
 
     unsigned int mesh_count = 0;
     for(MESH& mesh : gltfScene.meshes)
@@ -113,12 +113,12 @@ void draw_frame ()
         mModel.translation(mesh.transform.translation.x, mesh.transform.translation.y, mesh.transform.translation.z);
         mModel.rotationZ(angle); mModel.rotationX(angle/2.0f);// FOR TESTING
 
-        rasterSetWorldMatrix(mModel);
-        rasterSetViewMatrix(mView);
-        rasterSetProjectionMatrix(mProjection) ;
+        apiSetWorldMatrix(mModel);
+        apiSetViewMatrix(mView);
+        apiSetProjectionMatrix(mProjection) ;
 
-        rasterSetLight(gltfScene.lights[0].transform.translation);
-        rasterSetEye(gltfScene.cameras[0].transform.translation);
+        apiSetLight(gltfScene.lights[0].transform.translation);
+        apiSetEye(gltfScene.cameras[0].transform.translation);
 
         MATERIAL material;
         if(mesh.baseColorTexture!=-1) material.baseColor = gltfScene.textures[mesh.baseColorTexture];
@@ -134,14 +134,14 @@ void draw_frame ()
         material.factor = 0.5f;
         material.color = colors[mesh_count&7];
         material.smooth_shade = true;
-        rasterSetMaterial(material);
+        apiSetMaterial(material);
 
-        rasterSendVertices (mesh.vertexBuffer, mesh.vertexCount, mesh.indexBuffer, mesh.indexCount, mesh.center);
+        apiSendVertices (mesh.vertexBuffer, mesh.vertexCount, mesh.indexBuffer, mesh.indexCount, mesh.center);
 
         mesh_count++;
     }
 
-    rasterEndRender();
+    apiEndRender();
 
     angle += 0.05f;
     numFrames++;
@@ -157,5 +157,5 @@ void draw_frame ()
 void free_all()
 {
     free_gltf();
-    rasterRelease();
+    apiRelease();
 }

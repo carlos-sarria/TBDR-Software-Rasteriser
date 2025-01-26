@@ -8,68 +8,6 @@ unsigned int debug_colors[] = {0xFFFF0000,0xFF00FF00,0xFF0000FF,0xFFFFFF00,0xFFF
 unsigned int currColor = 0;
 RENDER_STATE rs;
 
-void rasterRasterizeIMR(TR_VERTEX v0, TR_VERTEX v1, TR_VERTEX v2);
-
-void rasterSetWorldMatrix(MATRIX m) { rs.worldMatrix = m; }
-
-void rasterSetViewMatrix(MATRIX m) { rs.viewMatrix = m; }
-
-void rasterSetProjectionMatrix(MATRIX m) { rs.projectionMatrix = m; }
-
-void rasterSetLight(VEC3 pos) { rs.lightPosition = pos;};
-void rasterSetEye(VEC3 pos) { rs.eyePosition = pos;};
-
-void rasterInitialise(const int &width, const int &height, void *debugBuffer)
-{
-    rs.frameWidth = width;
-    rs.frameHeight = height;
-    rs.depthBuffer = (float *) malloc(rs.frameWidth*rs.frameHeight*sizeof(float));
-    rs.colorBuffer = (unsigned long *)debugBuffer;
-    rs.material.baseColor.data = 0;
-    rs.material.baseColor.height = 0;
-    rs.material.baseColor.width = 0;
-    rs.material.blend_mode = NONE;
-    rs.material.factor = 1.0f;
-    rs.material.color = 0xFFFFFFFF;
-    rs.material.smooth_shade = true;
-
-    rs.pb.invTile = 1.0f/TILE_SIZE;
-    rs.pb.tiledFrameHeight = ceilf((float)rs.frameHeight*rs.pb.invTile);
-    rs.pb.tiledFrameWidth = ceilf((float)rs.frameWidth*rs.pb.invTile);
-
-    rs.pb.numberTiles   = rs.pb.tiledFrameWidth * rs.pb.tiledFrameHeight;
-    rs.pb.vertices      = (TR_VERTEX *)malloc(PARAMETERBUFFER_SIZE);
-    rs.pb.triPointers   = (TRI_POINTER *)malloc(PARAMETERBUFFER_SIZE);
-    rs.pb.tilePointers  = (TILE_POINTER *)malloc(PARAMETERBUFFER_SIZE);
-    rs.pb.tileSeeds     = (uintptr_t *)malloc(rs.pb.numberTiles*sizeof(uintptr_t));
-    rs.pb.tileBuffer    = (TILE_BUFFER *)malloc(TILE_SIZE*TILE_SIZE*sizeof(TILE_BUFFER));
-}
-
-void rasterRelease()
-{
-    if(rs.depthBuffer)      {free(rs.depthBuffer); rs.depthBuffer = nullptr;}
-    if(rs.pb.vertices)      {free(rs.pb.vertices); rs.pb.vertices = nullptr;}
-    if(rs.pb.triPointers)   {free(rs.pb.triPointers); rs.pb.triPointers = nullptr;}
-    if(rs.pb.tilePointers)  {free(rs.pb.tilePointers); rs.pb.tilePointers = nullptr;}
-    if(rs.pb.tileSeeds)     {free(rs.pb.tileSeeds); rs.pb.tileSeeds = nullptr;}
-    if(rs.pb.tileBuffer)    {free(rs.pb.tileBuffer); rs.pb.tileBuffer = nullptr;}
-}
-
-void rasterClear(unsigned int color, float depth)
-{
-    unsigned int i = rs.frameWidth*rs.frameHeight;
-    while(i--)
-    {
-        rs.depthBuffer[i]= depth;
-        rs.colorBuffer[i] = color;
-    }
-}
-
-void rasterSetMaterial(MATERIAL material)
-{
-    rs.material = material;
-}
-
 inline void boundingBox(VEC3 p0, VEC3 p1, VEC3 p2, VEC2INT &a, VEC2INT &b)
 {
     if((p0.x<=p1.x) && (p0.x<=p2.x)) a.x = p0.x;
@@ -89,7 +27,7 @@ inline void boundingBox(VEC3 p0, VEC3 p1, VEC3 p2, VEC2INT &a, VEC2INT &b)
     if((p2.y>=p0.y) && (p2.y>=p1.y)) b.y = p2.y;
 }
 
-inline bool rasterCulling (VEC3 v0, VEC3 v1, VEC3 v2)
+inline bool cull(VEC3 v0, VEC3 v1, VEC3 v2)
 {
     // Backface culling: sign = ab*ac.y - ac.x*ab.y;
     if((v0.x-v1.x)*(v0.y-v2.y) - (v0.x-v2.x)*(v0.y-v1.y) >= 0.0f) return true;
@@ -110,7 +48,7 @@ inline bool rasterCulling (VEC3 v0, VEC3 v1, VEC3 v2)
     return false;
 }
 #define FOCUS 0.01f
-inline unsigned int blendPBR (unsigned int U, unsigned int V)
+inline unsigned int blendPBR(unsigned int U, unsigned int V)
 {
     unsigned int map = U+V*rs.material.baseColor.width;
     unsigned int tex_color = (rs.material.baseColor.data==0) ? rs.material.color : rs.material.baseColor.data[map];
@@ -136,7 +74,7 @@ inline unsigned int blendPBR (unsigned int U, unsigned int V)
     return PACK(0xFF,r,g,b);
 }
 
-inline unsigned int blend (unsigned int mem_pos, unsigned int U, unsigned int V, float shade)
+inline unsigned int blend(unsigned int mem_pos, unsigned int U, unsigned int V, float shade)
 {
     unsigned int tex_color;
     unsigned int source_color;
@@ -190,7 +128,7 @@ inline unsigned int blend (unsigned int mem_pos, unsigned int U, unsigned int V,
 }
 
 // Barycentric coordinates. Cramer's rule to solve linear systems
-inline void barycentric (VEC3 v0, VEC3 v1, VEC3 v2, VEC3 p, VEC3 &by)
+inline void barycentric(VEC3 v0, VEC3 v1, VEC3 v2, VEC3 p, VEC3 &by)
 {
     VEC3 br0 = v1 - v0;
     VEC3 br1 = v2 - v0;
@@ -207,7 +145,7 @@ inline void barycentric (VEC3 v0, VEC3 v1, VEC3 v2, VEC3 p, VEC3 &by)
     by.x = 1.0f - by.y - by.z;
 }
 
-void rasterTransform (VERTEX *v, const unsigned int &numVertices, TR_VERTEX *meshTVB, VEC3 center)
+void transform(VERTEX *v, const unsigned int &numVertices, TR_VERTEX *meshTVB, VEC3 center)
 {
     MATRIX mMVP = rs.worldMatrix * rs.viewMatrix * rs.projectionMatrix;
 
@@ -257,18 +195,17 @@ inline bool refineTiling(VEC3 p0, VEC3 p1, VEC3 p2, unsigned int tileX, unsigned
     int totalSign[3] = {0,0,0};
     float x1,x2,y1,y2;
 
-
-    // touching line p1-p0
+    // line p1-p0
     x1 = p1.x; y1 = p1.y;
     x2 = p0.x; y2 = p0.y;
     totalSign[0] = LINE_TEST(a.x,a.y) + LINE_TEST(a.x,b.y) + LINE_TEST(b.x,a.y) + LINE_TEST(b.x,b.y);
 
-    // touching line p2-p1
+    // line p2-p1
     x1 = p2.x; y1 = p2.y;
     x2 = p1.x; y2 = p1.y;
     totalSign[1] = LINE_TEST(a.x,a.y) + LINE_TEST(a.x,b.y) + LINE_TEST(b.x,a.y) + LINE_TEST(b.x,b.y);
 
-    // touching line p0-p2
+    // line p0-p2
     x1 = p0.x; y1 = p0.y;
     x2 = p2.x; y2 = p2.y;
     totalSign[2] = LINE_TEST(a.x,a.y) + LINE_TEST(a.x,b.y) + LINE_TEST(b.x,a.y) + LINE_TEST(b.x,b.y);
@@ -310,7 +247,6 @@ void perfectTiling(TRI_POINTER *currentTraingle)
                 rs.pb.tilePointers[rs.pb.currentTilePointer].pointer = currentTraingle;
                 rs.pb.currentTilePointer++;
             }
-
             tile++;
         }
     }
@@ -383,17 +319,16 @@ bool rasterISP(unsigned int tileX, unsigned int tileY)
         {
             for(int x=a.x; x<b.x; x++)
             {
-                //VEC3 p(x,y,0.0f); barycentric(p0, p1, p2, p, bryA); // TEST
                 if(!(bryA.x<0.0 || bryA.y<0.0 || bryA.z<0.0))
                 {
-                    float depth  =  D;//vD.dot(bryA);
+                    float depth  =  D;
 
                     if(depth>=tf_ptr->depth) // Depth comparison GREATER-EQUAL
                     {
                         // Update the depth buffer with the new value
                         tf_ptr->depth = depth;
-                        tf_ptr->u = U;//vU.dot(bryA);
-                        tf_ptr->v = V;//vV.dot(bryA);
+                        tf_ptr->u = U;
+                        tf_ptr->v = V;
                         tf_ptr->material = material;
                     }
                 }
@@ -455,7 +390,7 @@ void rasterTA(unsigned short *indices, const unsigned int &numIndices, TR_VERTEX
         unsigned short in1 = indices[i++];
         unsigned short in2 = indices[i++];
 
-        if (rasterCulling(meshTVB[in0].pos, meshTVB[in1].pos, meshTVB[in2].pos)) continue;
+        if (cull(meshTVB[in0].pos, meshTVB[in1].pos, meshTVB[in2].pos)) continue;
 
         // Store this triangle
         rs.pb.triPointers[rs.pb.currentTriangle].v0 = &meshTVB[in0];
@@ -468,12 +403,12 @@ void rasterTA(unsigned short *indices, const unsigned int &numIndices, TR_VERTEX
     }
 }
 
-void rasterSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsigned short *indices, const unsigned int &numIndices, VEC3 center)
+void apiSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsigned short *indices, const unsigned int &numIndices, VEC3 center)
 {
 #if 1
     // Allocating the tranformed vertices sequetially
     TR_VERTEX *transformed = rs.pb.vertices + rs.pb.currentVertex*sizeof(TR_VERTEX);
-    rasterTransform (vertices, numVertices, transformed, center);
+    transform (vertices, numVertices, transformed, center);
     rs.pb.currentVertex += numVertices;
 
     // Procesing the triangle list (also sequetially)
@@ -489,7 +424,71 @@ void rasterSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsi
 
 }
 
-void rasterStartRender()
+///////////////////////////////////
+/// External API
+///////////////////////////////////
+
+void apiSetWorldMatrix(MATRIX m) { rs.worldMatrix = m; }
+
+void apiSetViewMatrix(MATRIX m) { rs.viewMatrix = m; }
+
+void apiSetProjectionMatrix(MATRIX m) { rs.projectionMatrix = m; }
+
+void apiSetLight(VEC3 pos) { rs.lightPosition = pos;};
+void apiSetEye(VEC3 pos) { rs.eyePosition = pos;};
+
+void apiInitialise(const int &width, const int &height, void *debugBuffer)
+{
+    rs.frameWidth = width;
+    rs.frameHeight = height;
+    rs.depthBuffer = (float *) malloc(rs.frameWidth*rs.frameHeight*sizeof(float));
+    rs.colorBuffer = (unsigned long *)debugBuffer;
+    rs.material.baseColor.data = 0;
+    rs.material.baseColor.height = 0;
+    rs.material.baseColor.width = 0;
+    rs.material.blend_mode = NONE;
+    rs.material.factor = 1.0f;
+    rs.material.color = 0xFFFFFFFF;
+    rs.material.smooth_shade = true;
+
+    rs.pb.invTile = 1.0f/TILE_SIZE;
+    rs.pb.tiledFrameHeight = ceilf((float)rs.frameHeight*rs.pb.invTile);
+    rs.pb.tiledFrameWidth = ceilf((float)rs.frameWidth*rs.pb.invTile);
+
+    rs.pb.numberTiles   = rs.pb.tiledFrameWidth * rs.pb.tiledFrameHeight;
+    rs.pb.vertices      = (TR_VERTEX *)malloc(PARAMETERBUFFER_SIZE);
+    rs.pb.triPointers   = (TRI_POINTER *)malloc(PARAMETERBUFFER_SIZE);
+    rs.pb.tilePointers  = (TILE_POINTER *)malloc(PARAMETERBUFFER_SIZE);
+    rs.pb.tileSeeds     = (uintptr_t *)malloc(rs.pb.numberTiles*sizeof(uintptr_t));
+    rs.pb.tileBuffer    = (TILE_BUFFER *)malloc(TILE_SIZE*TILE_SIZE*sizeof(TILE_BUFFER));
+}
+
+void apiRelease()
+{
+    if(rs.depthBuffer)      {free(rs.depthBuffer); rs.depthBuffer = nullptr;}
+    if(rs.pb.vertices)      {free(rs.pb.vertices); rs.pb.vertices = nullptr;}
+    if(rs.pb.triPointers)   {free(rs.pb.triPointers); rs.pb.triPointers = nullptr;}
+    if(rs.pb.tilePointers)  {free(rs.pb.tilePointers); rs.pb.tilePointers = nullptr;}
+    if(rs.pb.tileSeeds)     {free(rs.pb.tileSeeds); rs.pb.tileSeeds = nullptr;}
+    if(rs.pb.tileBuffer)    {free(rs.pb.tileBuffer); rs.pb.tileBuffer = nullptr;}
+}
+
+void apiClear(unsigned int color, float depth)
+{
+    unsigned int i = rs.frameWidth*rs.frameHeight;
+    while(i--)
+    {
+        rs.depthBuffer[i]= depth;
+        rs.colorBuffer[i] = color;
+    }
+}
+
+void apiSetMaterial(MATERIAL material)
+{
+    rs.material = material;
+}
+
+void apiStartRender()
 {
     rs.pb.currentVertex = 0;
     rs.pb.currentTilePointer = 0;
@@ -499,7 +498,7 @@ void rasterStartRender()
     rs.pb.materials.clear();
 }
 
-void rasterEndRender()
+void apiEndRender()
 {
     for (int y=0; y<rs.pb.tiledFrameHeight; y++)
     {
@@ -510,3 +509,5 @@ void rasterEndRender()
         }
     }
 }
+
+

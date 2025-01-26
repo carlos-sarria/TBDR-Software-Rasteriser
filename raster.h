@@ -83,7 +83,7 @@ struct PARAMETER_BUFFER
     TRI_POINTER     * triPointers;  // Triangle vertices pointers: v0, v1, v2, material (4 uints)
     TILE_POINTER    * tilePointers; // Tile link-list (one per triangle per tile): 1 next pointer, 1 triangle pointer (2 uints)
     uintptr_t       * tileSeeds;    // Keep the last triangle pointers: 1 uint per tile
-    TILE_BUFFER     * tileBuffer;   // The rectangular tile to rasterise in
+    TILE_BUFFER     * tileBuffer;   // The rectangular tile to apiise in
     unsigned int currentVertex;
     unsigned int currentTriangle;
     unsigned int currentTilePointer;
@@ -120,28 +120,28 @@ struct RENDER_STATE
     PARAMETER_BUFFER pb;
 };
 
-void rasterStartRender();
+void apiStartRender();
 
-void rasterEndRender();
+void apiEndRender();
 
-void rasterClear(unsigned int color=0x00000000, float depth=0.0f);
+void apiClear(unsigned int color=0x00000000, float depth=0.0f);
 
-void rasterInitialise(const int &width, const int &height, void *debugBuffer = nullptr);
+void apiInitialise(const int &width, const int &height, void *debugBuffer = nullptr);
 
-void rasterRelease();
+void apiRelease();
 
-void rasterSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsigned short *indices, const unsigned int &numIndices, VEC3 center);
+void apiSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsigned short *indices, const unsigned int &numIndices, VEC3 center);
 
-void rasterSetMaterial(MATERIAL material);
+void apiSetMaterial(MATERIAL material);
 
-void rasterSetWorldMatrix(MATRIX m);
+void apiSetWorldMatrix(MATRIX m);
 
-void rasterSetViewMatrix(MATRIX m);
+void apiSetViewMatrix(MATRIX m);
 
-void rasterSetProjectionMatrix(MATRIX m);
+void apiSetProjectionMatrix(MATRIX m);
 
-void rasterSetLight(VEC3 pos);
+void apiSetLight(VEC3 pos);
 
-void rasterSetEye(VEC3 pos);
+void apiSetEye(VEC3 pos);
 
 #endif // RASTER_H
