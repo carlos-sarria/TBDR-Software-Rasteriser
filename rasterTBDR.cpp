@@ -107,7 +107,7 @@ void transform(VERTEX *v, const unsigned int &numVertices, TR_VERTEX *meshTVB, V
     }
 }
 /// testTriangle
-/// Returns true if a triangle (p0,p1,p2) is touching a orthogonal rectangle (a,b)
+/// Returns true if a triangle (p0,p1,p2) is touching an orthogonal rectangle (a,b)
 #define LINE_TEST(x,y) ((((x2-x1)*(y1-y)-(x1-x)*(y2-y1))<0)?-1:1)
 inline bool testTriangle(VEC3 p0, VEC3 p1, VEC3 p2, VEC2 a, VEC2 b)
 {
@@ -435,7 +435,7 @@ void apiSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsigne
     transform (vertices, numVertices, transformed, center);
     rs.pb.currentVertex += numVertices;
 
-    // Procesing the triangle list (store also sequentially)
+    // Processing the triangle list (store also sequentially)
     rasterTA(indices, numIndices, transformed);
 
 #else // TEST single triangle

@@ -6,59 +6,6 @@ unsigned int debug_colors[] = {0xFFFF0000,0xFF00FF00,0xFF0000FF,0xFFFFFF00,0xFFF
 unsigned int currColor = 0;
 RENDER_STATE rs;
 
-void rasterSetWorldMatrix(MATRIX m) { rs.worldMatrix = m; }
-
-void rasterSetViewMatrix(MATRIX m) { rs.viewMatrix = m; }
-
-void rasterSetProjectionMatrix(MATRIX m) { rs.projectionMatrix = m; }
-
-void rasterSetLight(VEC3 pos) { rs.lightPosition = pos;};
-
-void rasterSetEye(VEC3 pos) { rs.eyePosition = pos;};
-
-void rasterInitialise(const int &width, const int &height, void *debugBuffer)
-{
-    rs.frameWidth = width;
-    rs.frameHeight = height;
-    rs.depthBuffer = (float *) malloc(rs.frameWidth*rs.frameHeight*sizeof(float));
-    rs.colorBuffer = (unsigned long *)debugBuffer;
-    rs.material.baseColor.data = 0;
-    rs.material.baseColor.height = 0;
-    rs.material.baseColor.width = 0;
-    rs.material.blend_mode = NONE;
-    rs.material.factor = 1.0f;
-    rs.material.color = 0xFFFFFFFF;
-    rs.material.smooth_shade = true;
-}
-
-void rasterRelease()
-{
-    if(rs.depthBuffer) { free(rs.depthBuffer); rs.depthBuffer = nullptr;}
-}
-
-void rasterClear(unsigned int color, float depth)
-{
-    unsigned int i = rs.frameWidth*rs.frameHeight;
-    while(i--)
-    {
-        rs.depthBuffer[i]= depth;
-        rs.colorBuffer[i] = color;
-    }
-}
-
-void rasterStartRender()
-{
-}
-
-void rasterEndRender()
-{
-}
-
-void rasterSetMaterial(MATERIAL material)
-{
-    rs.material = material;
-}
-
 inline void boundingBox(VEC3 p0, VEC3 p1, VEC3 p2, VEC2INT &a, VEC2INT &b)
 {
     if((p0.x<=p1.x) && (p0.x<=p2.x)) a.x = p0.x;
@@ -78,25 +25,49 @@ inline void boundingBox(VEC3 p0, VEC3 p1, VEC3 p2, VEC2INT &a, VEC2INT &b)
     if((p2.y>=p0.y) && (p2.y>=p1.y)) b.y = p2.y;
 }
 
-inline bool rasterCulling (VEC3 v0, VEC3 v1, VEC3 v2)
+/// testTriangle
+/// Returns true if a triangle (p0,p1,p2) is touching an orthogonal rectangle (a,b)
+#define LINE_TEST(x,y) ((((x2-x1)*(y1-y)-(x1-x)*(y2-y1))<0)?-1:1)
+inline bool testTriangle(VEC3 p0, VEC3 p1, VEC3 p2, VEC2 a, VEC2 b)
+{
+    int totalSign[3] = {0,0,0};
+    float x1,x2,y1,y2;
+
+    // line p1-p0
+    x1 = p1.x; y1 = p1.y;
+    x2 = p0.x; y2 = p0.y;
+    totalSign[0] = LINE_TEST(a.x,a.y) + LINE_TEST(a.x,b.y) + LINE_TEST(b.x,a.y) + LINE_TEST(b.x,b.y);
+
+    // line p2-p1
+    x1 = p2.x; y1 = p2.y;
+    x2 = p1.x; y2 = p1.y;
+    totalSign[1] = LINE_TEST(a.x,a.y) + LINE_TEST(a.x,b.y) + LINE_TEST(b.x,a.y) + LINE_TEST(b.x,b.y);
+
+    // line p0-p2
+    x1 = p0.x; y1 = p0.y;
+    x2 = p2.x; y2 = p2.y;
+    totalSign[2] = LINE_TEST(a.x,a.y) + LINE_TEST(a.x,b.y) + LINE_TEST(b.x,a.y) + LINE_TEST(b.x,b.y);
+
+    // Edge comparison that guarantees it is inside the triangle only.
+    if(abs(totalSign[0])!=4 && (totalSign[1]==-4||abs(totalSign[1])!=4) && (totalSign[2]==-4||abs(totalSign[2])!=4)) return true; // edge 1
+    if(abs(totalSign[1])!=4 && (totalSign[2]==-4||abs(totalSign[2])!=4) && (totalSign[0]==-4||abs(totalSign[0])!=4)) return true; // edge 2
+    if(abs(totalSign[2])!=4 && (totalSign[0]==-4||abs(totalSign[0])!=4) && (totalSign[1]==-4||abs(totalSign[1])!=4)) return true; // edge 3
+    if(totalSign[0]==-4 && totalSign[1]==-4 && totalSign[2]==-4) return true; // fully inside: all -4
+
+    return false; // outside
+}
+
+inline bool culling (VEC3 v0, VEC3 v1, VEC3 v2)
 {
     // Backface culling: sign = ab*ac.y - ac.x*ab.y;
     if((v0.x-v1.x)*(v0.y-v2.y) - (v0.x-v2.x)*(v0.y-v1.y) >= 0.0f) return true;
 
     // Depth culling (front plane only) TODO: Front plane clipping
-    if(v0.z<0.0f && v1.z<0.0f && v2.z<0.0f) return true;
+    if(v0.z<0.0f || v1.z<0.0f || v2.z<0.0f) return true;
 
-    // Bounding box check (out-of-the-screen)
-    VEC2INT a, b;
-    boundingBox(v0, v1, v2, a, b);
-    VEC2INT sc(rs.frameWidth/2, rs.frameHeight/2);
-    VEC2INT td((b.x-a.x)/2,(b.y-a.y)/2);
-    VEC2INT tc((b.x+a.x)/2,(b.y+a.y)/2);
-
-      if( abs(tc.x-sc.x)>(td.x+sc.x) &&
-        abs(tc.y-sc.y)>(td.y+sc.y) ) return true;
-
-    return false;
+    VEC2 a(0, 0);
+    VEC2 b(rs.frameWidth, rs.frameHeight);
+    return !testTriangle(v0, v1, v2, a, b);
 }
 #define FOCUS 0.01f
 inline unsigned int blendPBR (unsigned int U, unsigned int V)
@@ -196,7 +167,7 @@ inline void barycentric (VEC3 v0, VEC3 v1, VEC3 v2, VEC3 p, VEC3 &by)
     by.x = 1.0f - by.y - by.z;
 }
 
-void rasterRasterizeIMR(unsigned short *indices, const unsigned int &numIndices, TR_VERTEX *meshTVB)
+void rasterizeIMR(unsigned short *indices, const unsigned int &numIndices, TR_VERTEX *meshTVB)
 {
     for (int indexCount = 0; indexCount < numIndices;)
     {
@@ -204,7 +175,7 @@ void rasterRasterizeIMR(unsigned short *indices, const unsigned int &numIndices,
         unsigned short in1 = indices[indexCount++];
         unsigned short in2 = indices[indexCount++];
 
-        if (rasterCulling(meshTVB[in0].pos, meshTVB[in1].pos, meshTVB[in2].pos)) continue;
+        if (culling(meshTVB[in0].pos, meshTVB[in1].pos, meshTVB[in2].pos)) continue;
 
         if (meshTVB[in0].pos.y > meshTVB[in1].pos.y) SWAP(in0, in1);
         if (meshTVB[in0].pos.y > meshTVB[in2].pos.y) SWAP(in0, in2);
@@ -229,101 +200,102 @@ void rasterRasterizeIMR(unsigned short *indices, const unsigned int &numIndices,
 
             if(y<0 || y>=rs.frameHeight) continue;
 
-            int a, b;
+            int aa, bb;
 
             float alpha = (float)i / (float)total_height;
-            a = int(v0.pos.x + (v2.pos.x - v0.pos.x) * alpha);
+            aa = int(v0.pos.x + (v2.pos.x - v0.pos.x) * alpha);
 
             if(y > v1.pos.y || v1.pos.y == v0.pos.y) // bottom half of the triangle
             {
                 float beta = (float)(y - v1.pos.y) / (v2.pos.y - v1.pos.y);
-                b = int(v1.pos.x + (v2.pos.x - v1.pos.x) * beta);
+                bb = int(v1.pos.x + (v2.pos.x - v1.pos.x) * beta);
             }
             else
             {
                 float beta = (float)(y - v0.pos.y) / (v1.pos.y - v0.pos.y);
-                b = int(v0.pos.x + (v1.pos.x - v0.pos.x) * beta);
+                bb = int(v0.pos.x + (v1.pos.x - v0.pos.x) * beta);
             }
 
-            if (a > b) SWAP(a, b);
+            if (aa > bb) SWAP(aa, bb);
 
-            float d = 1.0f/float(b-a);
-
-            VEC3 vA(a,y,0.0f), vB(b,y,0.0f), byA, byB;
-
-            //barycentric(v0.pos, v1.pos, v2.pos, vA, byA);
-            VEC3 br2 = vA - v0.pos;
-            float d20 = DOT(br2, br0);
-            float d21 = DOT(br2, br1);
-            byA.y = (d11 * d20 - d01 * d21) * invD;
-            byA.z = (d00 * d21 - d01 * d20) * invD;
-            byA.x = 1.0f - byA.y - byA.z;
-
-            //barycentric(v0.pos, v1.pos, v2.pos, vB, byB);
-            br2 = vB - v0.pos;
-            d20 = DOT(br2, br0);
-            d21 = DOT(br2, br1);
-            byB.y = (d11 * d20 - d01 * d21) * invD;
-            byB.z = (d00 * d21 - d01 * d20) * invD;
-            byB.x = 1.0f - byB.y - byB.z;
-
-            VEC3 vDepth(v0.pos.z, v1.pos.z, v2.pos.z);
-            float depth =  vDepth.dot(byA);
-            float depthB =  vDepth.dot(byB);
-            float depth_incr = (depthB-depth)*d;
-
-            float invD = 1.0f/depth;
-            float invDB = 1.0f/depthB;
-
-            VEC3 vU(v0.uv.u, v1.uv.u, v2.uv.u);
-            // float texU = vU.dot(byA) * invD * (float)rs.material.baseColor.width;
-            // float texUB = vU.dot(byB) * invDB * (float)rs.material.baseColor.width;
-            // float texU_incr = (texUB-texU)*d;
-
-            VEC3 vV(v0.uv.v, v1.uv.v, v2.uv.v);
-            // float texV = vV.dot(byA) * invD * (float)rs.material.baseColor.height;
-            // float texVB = vV.dot(byB) * invDB * (float)rs.material.baseColor.height;
-            // float texV_incr = (texVB-texV)*d;
-
-            // VEC3 vInt(v0.intensity, v1.intensity, v2.intensity);
-            // float shade = vInt.dot(byA) * invD;
-            // float shadeB = vInt.dot(byB) * invDB;
-            // float shade_incr = (shadeB-shade)*d;
-
-            unsigned long incr = (a + y * rs.frameWidth);
-
-             for (int x = a; x < b; x++)
+            // We split the raster line in 32 pixels chucks to reduce visual artefacts
+            int next = (int)truncf((bb-aa)/32.0f)+1;
+            for (int inc=0; inc<next; inc++)
             {
-                if(x>=0 && x<rs.frameWidth)
+                int a = aa + inc*32;
+                int b = aa + (inc+1)*32;
+                if(b>bb) b = bb;
+
+                float d = 1.0f/float(b-a);
+
+                VEC3 vA(a,y,0.0f), vB(b,y,0.0f), byA, byB;
+
+                VEC3 br2 = vA - v0.pos;
+                float d20 = DOT(br2, br0);
+                float d21 = DOT(br2, br1);
+                byA.y = (d11 * d20 - d01 * d21) * invD;
+                byA.z = (d00 * d21 - d01 * d20) * invD;
+                byA.x = 1.0f - byA.y - byA.z;
+
+                br2 = vB - v0.pos;
+                d20 = DOT(br2, br0);
+                d21 = DOT(br2, br1);
+                byB.y = (d11 * d20 - d01 * d21) * invD;
+                byB.z = (d00 * d21 - d01 * d20) * invD;
+                byB.x = 1.0f - byB.y - byB.z;
+
+                VEC3 vDepth(v0.pos.z, v1.pos.z, v2.pos.z);
+                float depth =  vDepth.dot(byA);
+                float depthB =  vDepth.dot(byB);
+                float depth_incr = (depthB-depth)*d;
+
+                float invD = 1.0f/depth;
+                float invDB = 1.0f/depthB;
+
+                VEC3 vU(v0.uv.u, v1.uv.u, v2.uv.u);
+                float texU = vU.dot(byA) * invD * (float)rs.material.baseColor.width;
+                float texUB = vU.dot(byB) * invDB * (float)rs.material.baseColor.width;
+                float texU_incr = (texUB-texU)*d;
+
+                VEC3 vV(v0.uv.v, v1.uv.v, v2.uv.v);
+                float texV = vV.dot(byA) * invD * (float)rs.material.baseColor.height;
+                float texVB = vV.dot(byB) * invDB * (float)rs.material.baseColor.height;
+                float texV_incr = (texVB-texV)*d;
+
+                VEC3 vInt(v0.intensity, v1.intensity, v2.intensity);
+                float shade = vInt.dot(byA) * invD;
+                float shadeB = vInt.dot(byB) * invDB;
+                float shade_incr = (shadeB-shade)*d;
+
+                unsigned long incr = (a + y * rs.frameWidth);
+
+                 for (int x = a; x < b; x++)
                 {
-                    if(depth>=rs.depthBuffer[incr]) // Depth comparison GREATER-EQUAL
+                    if(x>=0 && x<rs.frameWidth)
                     {
-                        // Update the depth buffer with the new value
-                        rs.depthBuffer[incr] = depth;
+                        if(depth>=rs.depthBuffer[incr]) // Depth comparison GREATER-EQUAL
+                        {
+                            // Update the depth buffer with the new value
+                            rs.depthBuffer[incr] = depth;
 
-                        VEC3 v(x,y,0.0f);
-                        invD = 1.0f/depth;
-                        barycentric(v0.pos, v1.pos, v2.pos, v, byA);
-                        float texU = vU.dot(byA) * invD * (float)rs.material.baseColor.width;
-                        float texV = vV.dot(byA) * invD * (float)rs.material.baseColor.height;
-
-                        // Draw the pixel on the screen buffer
-                        rs.colorBuffer[incr] = blendPBR((int)texU&(rs.material.baseColor.width-1), (int)texV&(rs.material.baseColor.height-1));
-                        //rs.colorBuffer[incr] = blend(incr, (unsigned int)texU&(rs.material.baseColor.width-1), (unsigned int)texV&(rs.material.baseColor.height-1), shade);
+                            // Draw the pixel on the screen buffer
+                            rs.colorBuffer[incr] = blendPBR((int)texU&(rs.material.baseColor.width-1), (int)texV&(rs.material.baseColor.height-1));
+                            //rs.colorBuffer[incr] = blend(incr, (unsigned int)texU&(rs.material.baseColor.width-1), (unsigned int)texV&(rs.material.baseColor.height-1), shade);
+                        }
                     }
-                }
 
-                depth += depth_incr;
-                // texU += texU_incr;
-                // texV += texV_incr;
-                // shade += shade_incr;
-                incr++;
+                    depth += depth_incr;
+                    texU += texU_incr;
+                    texV += texV_incr;
+                    shade += shade_incr;
+                    incr++;
+                }
             }
         }
     }
 }
 
-void rasterTransform (VERTEX *v, const unsigned int &numVertices, TR_VERTEX *meshTVB, VEC3 center)
+void transform (VERTEX *v, const unsigned int &numVertices, TR_VERTEX *meshTVB, VEC3 center)
 {
     MATRIX mMVP = rs.worldMatrix * rs.viewMatrix * rs.projectionMatrix;
 
@@ -359,12 +331,69 @@ void rasterTransform (VERTEX *v, const unsigned int &numVertices, TR_VERTEX *mes
     }
 }
 
-void rasterSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsigned short *indices, const unsigned int &numIndices, VEC3 center)
+///////////////////////////////////
+/// External API
+///////////////////////////////////
+
+void apiSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsigned short *indices, const unsigned int &numIndices, VEC3 center)
 {
     TR_VERTEX *meshTVB = (TR_VERTEX *)malloc(numVertices*sizeof(TR_VERTEX));
 
-    rasterTransform (vertices, numVertices, meshTVB, center);
-    rasterRasterizeIMR (indices, numIndices, meshTVB);
+    transform (vertices, numVertices, meshTVB, center);
+    rasterizeIMR (indices, numIndices, meshTVB);
 
     free(meshTVB);
+}
+
+void apiSetWorldMatrix(MATRIX m) { rs.worldMatrix = m; }
+
+void apiSetViewMatrix(MATRIX m) { rs.viewMatrix = m; }
+
+void apiSetProjectionMatrix(MATRIX m) { rs.projectionMatrix = m; }
+
+void apiSetLight(VEC3 pos) { rs.lightPosition = pos;};
+
+void apiSetEye(VEC3 pos) { rs.eyePosition = pos;};
+
+void apiInitialise(const int &width, const int &height, void *debugBuffer)
+{
+    rs.frameWidth = width;
+    rs.frameHeight = height;
+    rs.depthBuffer = (float *) malloc(rs.frameWidth*rs.frameHeight*sizeof(float));
+    rs.colorBuffer = (unsigned long *)debugBuffer;
+    rs.material.baseColor.data = 0;
+    rs.material.baseColor.height = 0;
+    rs.material.baseColor.width = 0;
+    rs.material.blend_mode = NONE;
+    rs.material.factor = 1.0f;
+    rs.material.color = 0xFFFFFFFF;
+    rs.material.smooth_shade = true;
+}
+
+void apiRelease()
+{
+    if(rs.depthBuffer) { free(rs.depthBuffer); rs.depthBuffer = nullptr;}
+}
+
+void apiClear(unsigned int color, float depth)
+{
+    unsigned int i = rs.frameWidth*rs.frameHeight;
+    while(i--)
+    {
+        rs.depthBuffer[i]= depth;
+        rs.colorBuffer[i] = color;
+    }
+}
+
+void apiStartRender()
+{
+}
+
+void apiEndRender()
+{
+}
+
+void apiSetMaterial(MATERIAL material)
+{
+    rs.material = material;
 }
