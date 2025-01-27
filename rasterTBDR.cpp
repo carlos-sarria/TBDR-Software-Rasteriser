@@ -26,27 +26,6 @@ inline void boundingBox(VEC3 p0, VEC3 p1, VEC3 p2, VEC2INT &a, VEC2INT &b)
     if((p1.y>=p2.y) && (p1.y>=p0.y)) b.y = p1.y;
     if((p2.y>=p0.y) && (p2.y>=p1.y)) b.y = p2.y;
 }
-
-inline bool cull(VEC3 v0, VEC3 v1, VEC3 v2)
-{
-    // Backface culling: sign = ab*ac.y - ac.x*ab.y;
-    if((v0.x-v1.x)*(v0.y-v2.y) - (v0.x-v2.x)*(v0.y-v1.y) >= 0.0f) return true;
-
-    // Depth culling (front plane only) TODO: Front plane clipping
-    if(v0.z<0.0f && v1.z<0.0f && v2.z<0.0f) return true;
-
-    // Bounding box check (out-of-the-screen)
-    VEC2INT a, b;
-    boundingBox(v0, v1, v2, a, b);
-    VEC2INT sc(rs.frameWidth/2, rs.frameHeight/2);
-    VEC2INT td((b.x-a.x)/2,(b.y-a.y)/2);
-    VEC2INT tc((b.x+a.x)/2,(b.y+a.y)/2);
-
-      if( abs(tc.x-sc.x)>(td.x+sc.x) &&
-        abs(tc.y-sc.y)>(td.y+sc.y) ) return true;
-
-    return false;
-}
 #define FOCUS 0.01f
 inline unsigned int blendPBR(unsigned int U, unsigned int V)
 {
@@ -72,59 +51,6 @@ inline unsigned int blendPBR(unsigned int U, unsigned int V)
     float b = shade*color.z + shininess;
 
     return PACK(0xFF,r,g,b);
-}
-
-inline unsigned int blend(unsigned int mem_pos, unsigned int U, unsigned int V, float shade)
-{
-    unsigned int tex_color;
-    unsigned int source_color;
-    tex_color = (rs.material.baseColor.data==0) ? rs.material.color : rs.material.baseColor.data[U+V*rs.material.baseColor.width];
-
-    if(rs.material.blend_mode==NONE && rs.material.smooth_shade==false) return tex_color;
-
-    float red =   (float)(tex_color>>16&0xFF);
-    float green = (float)(tex_color>>8&0xFF);
-    float blue =  (float)(tex_color&0xFF);
-
-    if(rs.material.smooth_shade)
-    {
-        shade = CLAMP(shade,0.0f,1.0f);
-        red *= shade;
-        green *= shade;
-        blue *= shade;
-    }
-
-    if(rs.material.blend_mode!=NONE)
-    {
-        source_color = rs.colorBuffer[mem_pos];
-        float s_red =   (float)(source_color>>16&0xFF);
-        float s_green = (float)(source_color>>8&0xFF);
-        float s_blue =  (float)(source_color&0xFF);
-
-        if (rs.material.blend_mode==ADDITIVE)
-        {
-            red   += s_red;
-            green += s_green;
-            blue  += s_blue;
-
-            red = CLAMP(red, 0.0f, 255.0);
-            green = CLAMP(green, 0.0f, 255.0);
-            blue = CLAMP(blue, 0.0f, 255.0);
-        }
-
-        if (rs.material.blend_mode==ALPHA)
-        {
-            float alpha = (float)(tex_color>>24&0xFF)*(rs.material.factor/255.0f);
-            float inv_alpha = 1.0f-alpha;
-            red   = alpha * red + inv_alpha * s_red;
-            green = alpha * green + inv_alpha * s_green;
-            blue  = alpha * blue + inv_alpha * s_blue;
-        }
-    }
-
-    unsigned int res_color = 0xFF<<24|int(red)<<16|int(green)<<8|int(blue);
-
-    return res_color;
 }
 
 // Barycentric coordinates. Cramer's rule to solve linear systems
@@ -180,18 +106,11 @@ void transform(VERTEX *v, const unsigned int &numVertices, TR_VERTEX *meshTVB, V
             meshTVB[i].intensity = shade * div;
     }
 }
-
+/// testTriangle
+/// Returns true if a triangle (p0,p1,p2) is touching a orthogonal rectangle (a,b)
 #define LINE_TEST(x,y) ((((x2-x1)*(y1-y)-(x1-x)*(y2-y1))<0)?-1:1)
-inline bool refineTiling(VEC3 p0, VEC3 p1, VEC3 p2, unsigned int tileX, unsigned int tileY)
+inline bool testTriangle(VEC3 p0, VEC3 p1, VEC3 p2, VEC2 a, VEC2 b)
 {
-    if(tileX<0 || tileX>=rs.pb.tiledFrameWidth || tileY<0 || tileY>=rs.pb.tiledFrameHeight) return false;
-
-    // Separating axis theorem using only the distances/sign.
-    // Does not check whether it is inside the segment, so it
-    // might have some false positives. But these are very few.
-    VEC2 a(tileX*TILE_SIZE, tileY*TILE_SIZE);
-    VEC2 b(a.x+TILE_SIZE, a.y+TILE_SIZE);
-
     int totalSign[3] = {0,0,0};
     float x1,x2,y1,y2;
 
@@ -219,11 +138,25 @@ inline bool refineTiling(VEC3 p0, VEC3 p1, VEC3 p2, unsigned int tileX, unsigned
     return false; // outside
 }
 
-void perfectTiling(TRI_POINTER *currentTraingle)
+inline bool cull(VEC3 v0, VEC3 v1, VEC3 v2)
 {
-    VEC3 p0(currentTraingle->v0->pos);
-    VEC3 p1(currentTraingle->v1->pos);
-    VEC3 p2(currentTraingle->v2->pos);
+    // Backface culling: sign = ab*ac.y - ac.x*ab.y;
+    if((v0.x-v1.x)*(v0.y-v2.y) - (v0.x-v2.x)*(v0.y-v1.y) >= 0.0f) return true;
+
+    // Depth culling (front plane only) TODO: Front plane clipping
+    // Brute-force polygon removal
+    if(v0.z<0.0f || v1.z<0.0f || v2.z<0.0f) return true;
+
+    VEC2 a(0, 0);
+    VEC2 b(rs.frameWidth, rs.frameHeight);
+    return !testTriangle(v0, v1, v2, a, b);
+}
+
+void perfectTiling(TRI_POINTER *currentTriangle)
+{
+    VEC3 p0(currentTriangle->v0->pos);
+    VEC3 p1(currentTriangle->v1->pos);
+    VEC3 p2(currentTriangle->v2->pos);
     VEC2INT a, b;
 
     boundingBox(p0, p1, p2, a, b);
@@ -235,17 +168,22 @@ void perfectTiling(TRI_POINTER *currentTraingle)
 
     for (int y = a.y; y<=b.y; y++)
     {
+        unsigned int tile = a.x+y*rs.pb.tiledFrameWidth;
         for (int x = a.x; x<=b.x; x++)
         {
-            unsigned int tile = x+y*rs.pb.tiledFrameWidth;
-
-            if (refineTiling(p0, p1, p2, x, y))
+            if(x<rs.pb.tiledFrameWidth && y<rs.pb.tiledFrameHeight)
             {
-                uintptr_t s = rs.pb.tileSeeds[tile];
-                rs.pb.tileSeeds[tile] = (uintptr_t)&rs.pb.tilePointers[rs.pb.currentTilePointer];
-                rs.pb.tilePointers[rs.pb.currentTilePointer].next = s; // link-list, 0 marks end of list
-                rs.pb.tilePointers[rs.pb.currentTilePointer].pointer = currentTraingle;
-                rs.pb.currentTilePointer++;
+                VEC2 a(x*TILE_SIZE, y*TILE_SIZE);
+                VEC2 b(a.x+TILE_SIZE, a.y+TILE_SIZE);
+
+                if (testTriangle(p0, p1, p2, a, b))
+                {
+                    uintptr_t s = rs.pb.tileSeeds[tile];
+                    rs.pb.tileSeeds[tile] = (uintptr_t)&rs.pb.tilePointers[rs.pb.currentTilePointer];
+                    rs.pb.tilePointers[rs.pb.currentTilePointer].next = s; // link-list, 0 marks end of list
+                    rs.pb.tilePointers[rs.pb.currentTilePointer].pointer = currentTriangle;
+                    rs.pb.currentTilePointer++;
+                }
             }
             tile++;
         }
