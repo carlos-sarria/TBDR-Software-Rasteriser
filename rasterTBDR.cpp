@@ -1,5 +1,5 @@
 #include "raster.h"
-//#include "log.h"
+#include "log.h"
 #include <stdlib.h>
 
 #define RASTER_IMR 0 // 1 = IMR, 0 = TBDR
@@ -27,12 +27,12 @@ inline void boundingBox(VEC3 p0, VEC3 p1, VEC3 p2, VEC2INT &a, VEC2INT &b)
     if((p2.y>=p0.y) && (p2.y>=p1.y)) b.y = p2.y;
 }
 #define FOCUS 0.01f
-inline unsigned int blendPBR(unsigned int U, unsigned int V)
+inline unsigned int blendPBR(unsigned int U, unsigned int V, MATERIAL material)
 {
-    unsigned int map = U+V*rs.material.baseColor.width;
-    unsigned int tex_color = (rs.material.baseColor.data==0) ? rs.material.color : rs.material.baseColor.data[map];
-    unsigned int nor_color = (rs.material.normal.data==0) ? 0xFFBEBEFF : rs.material.normal.data[map];
-    unsigned int met_color = (rs.material.metallicRoughness.data==0) ? 0xFFFFFFFF : rs.material.metallicRoughness.data[map];
+    unsigned int map = U+V*material.baseColor.width;
+    unsigned int tex_color = (material.baseColor.data==0) ? material.color : material.baseColor.data[map];
+    unsigned int nor_color = (material.normal.data==0) ? 0xFFBEBEFF : material.normal.data[map];
+    unsigned int met_color = (material.metallicRoughness.data==0) ? 0xFFFFFFFF : material.metallicRoughness.data[map];
 
     VEC3 color      = UNPACK(tex_color);
     VEC3 normal     = UNPACK(nor_color);
@@ -71,7 +71,7 @@ inline void barycentric(VEC3 v0, VEC3 v1, VEC3 v2, VEC3 p, VEC3 &by)
     by.x = 1.0f - by.y - by.z;
 }
 
-void transform(VERTEX *v, const unsigned int &numVertices, TR_VERTEX *meshTVB, VEC3 center)
+void transform(VERTEX *v, const unsigned int &numVertices, VEC3 center)
 {
     MATRIX mMVP = rs.worldMatrix * rs.viewMatrix * rs.projectionMatrix;
 
@@ -96,14 +96,14 @@ void transform(VERTEX *v, const unsigned int &numVertices, TR_VERTEX *meshTVB, V
         float shade = v[i].nor.dot(rs.lightInvPosition) * 0.5 + 0.5f;
 
         float div = 1.0f/out.z;
-        meshTVB[i].pos.x = ceil(out.x * div * (rs.frameWidth/2) + rs.frameWidth/2); // ceil = pixel left-top co nvention
-        meshTVB[i].pos.y = ceil(out.y * div * (rs.frameWidth/2) + rs.frameHeight/2);
-        meshTVB[i].pos.z = div;
+        rs.pb.vertices[i+rs.pb.currentVertex].pos.x = ceil(out.x * div * (rs.frameWidth/2) + rs.frameWidth/2); // ceil = pixel left-top co nvention
+        rs.pb.vertices[i+rs.pb.currentVertex].pos.y = ceil(out.y * div * (rs.frameWidth/2) + rs.frameHeight/2);
+        rs.pb.vertices[i+rs.pb.currentVertex].pos.z = div;
 
-        meshTVB[i].uv.u = v[i].uv.u * div;
-        meshTVB[i].uv.v = v[i].uv.v * div;
+        rs.pb.vertices[i+rs.pb.currentVertex].uv.u = v[i].uv.u * div;
+        rs.pb.vertices[i+rs.pb.currentVertex].uv.v = v[i].uv.v * div;
 
-            meshTVB[i].intensity = shade * div;
+        rs.pb.vertices[i+rs.pb.currentVertex].intensity = shade * div;
     }
 }
 /// testTriangle
@@ -179,10 +179,13 @@ void perfectTiling(TRI_POINTER *currentTriangle)
                 if (testTriangle(p0, p1, p2, a, b))
                 {
                     uintptr_t s = rs.pb.tileSeeds[tile];
-                    rs.pb.tileSeeds[tile] = (uintptr_t)&rs.pb.tilePointers[rs.pb.currentTilePointer];
-                    rs.pb.tilePointers[rs.pb.currentTilePointer].next = s; // link-list, 0 marks end of list
-                    rs.pb.tilePointers[rs.pb.currentTilePointer].pointer = currentTriangle;
-                    rs.pb.currentTilePointer++;
+                    if(rs.pb.currentTilePointer*sizeof(TILE_POINTER)<PARAMETERBUFFER_SIZE)
+                    {
+                        rs.pb.tileSeeds[tile] = (uintptr_t)&rs.pb.tilePointers[rs.pb.currentTilePointer];
+                        rs.pb.tilePointers[rs.pb.currentTilePointer].next = s; // link-list, 0 marks end of list
+                        rs.pb.tilePointers[rs.pb.currentTilePointer].pointer = currentTriangle;
+                        rs.pb.currentTilePointer++;
+                    }
                 }
             }
             tile++;
@@ -303,37 +306,34 @@ void rasterTSP(unsigned int tileX, unsigned int tileY)
             if(tf_ptr->depth>0 && x<rs.frameWidth && y<rs.frameHeight)
             {
                 float invD = 1.0f/tf_ptr->depth;
+                MATERIAL material = rs.pb.materials[tf_ptr->material];
 
-                unsigned int u = (unsigned int)(tf_ptr->u*invD*rs.material.baseColor.width) & (rs.material.baseColor.width-1);
-                unsigned int v = (unsigned int)(tf_ptr->v*invD*rs.material.baseColor.height) & (rs.material.baseColor.height-1);
+                unsigned int u = (unsigned int)(tf_ptr->u*invD*material.baseColor.width) & (material.baseColor.width-1);
+                unsigned int v = (unsigned int)(tf_ptr->v*invD*material.baseColor.height) & (material.baseColor.height-1);
 
-                rs.colorBuffer[x+y*rs.frameWidth] = blendPBR(u,v);
+                rs.colorBuffer[x+y*rs.frameWidth] = blendPBR(u,v,material);
             }
-            // else  // TEST
-            // {
-            //     rs.colorBuffer[x+y*rs.frameWidth] = 0xFFFF0000;
-            // }
             tf_ptr++;
         }
     }
 }
 
-void rasterTA(unsigned short *indices, const unsigned int &numIndices, TR_VERTEX *meshTVB)
+void rasterTA(unsigned short *indices, const unsigned int &numIndices)
 {
     rs.pb.materials.push_back(rs.material);
 
     for (int i = 0; i < numIndices;)
     {
-        unsigned short in0 = indices[i++];
-        unsigned short in1 = indices[i++];
-        unsigned short in2 = indices[i++];
+        unsigned short in0 = rs.pb.currentVertex + indices[i++];
+        unsigned short in1 = rs.pb.currentVertex + indices[i++];
+        unsigned short in2 = rs.pb.currentVertex + indices[i++];
 
-        if (cull(meshTVB[in0].pos, meshTVB[in1].pos, meshTVB[in2].pos)) continue;
+        if (cull(rs.pb.vertices[in0].pos, rs.pb.vertices[in1].pos,rs.pb.vertices[in2].pos)) continue;
 
         // Store this triangle
-        rs.pb.triPointers[rs.pb.currentTriangle].v0 = &meshTVB[in0];
-        rs.pb.triPointers[rs.pb.currentTriangle].v1 = &meshTVB[in1];
-        rs.pb.triPointers[rs.pb.currentTriangle].v2 = &meshTVB[in2];
+        rs.pb.triPointers[rs.pb.currentTriangle].v0 = &rs.pb.vertices[in0];
+        rs.pb.triPointers[rs.pb.currentTriangle].v1 = &rs.pb.vertices[in1];
+        rs.pb.triPointers[rs.pb.currentTriangle].v2 = &rs.pb.vertices[in2];
         rs.pb.triPointers[rs.pb.currentTriangle].material = rs.pb.materials.size()-1;
 
         perfectTiling(&rs.pb.triPointers[rs.pb.currentTriangle]);
@@ -427,25 +427,23 @@ void apiEndRender()
     }
 }
 
-void apiSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsigned short *indices, const unsigned int &numIndices, VEC3 center)
+bool apiSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsigned short *indices, const unsigned int &numIndices, VEC3 center)
 {
-#if 1
+
+    if( (rs.pb.currentVertex+numVertices)*sizeof(TR_VERTEX) > PARAMETERBUFFER_SIZE ||
+        (rs.pb.currentTriangle+numIndices)*sizeof(TRI_POINTER) > PARAMETERBUFFER_SIZE)
+    {
+        apiLog("ERROR: Too many vertices (%d). Please increase PARAMETERBUFFER_SIZE\n",rs.pb.currentVertex+numVertices);
+        return false;
+    }
+
     // Transform vertices and allocate them sequentially
-    TR_VERTEX *transformed = rs.pb.vertices + rs.pb.currentVertex*sizeof(TR_VERTEX);
-    transform (vertices, numVertices, transformed, center);
+    unsigned int vertexPos = rs.pb.currentVertex;
+    transform (vertices, numVertices, center);
+    rasterTA(indices, numIndices);
     rs.pb.currentVertex += numVertices;
 
-    // Processing the triangle list (store also sequentially)
-    rasterTA(indices, numIndices, transformed);
-
-#else // TEST single triangle
-    float div = 0.1f;
-    rs.pb.vertices[1] = {VEC3(10.0f,710.0f,0.1f), VEC2(1.0f*div,1.0f*div), 0.0f};
-    rs.pb.vertices[0] = {VEC3(512.0f,10.0f,0.1f),   VEC2(0.5f*div,0.0f*div), 0.0f};
-    rs.pb.vertices[2] = {VEC3(1000.0f,510.0f,0.1f),   VEC2(0.0f*div,1.0f*div), 0.0f};
-    unsigned short i[3] = {0,1,2};
-    rasterTA(i, 1, rs.pb.vertices);
-#endif
+    return true;
 }
 
 

@@ -279,8 +279,8 @@ void rasterizeIMR(unsigned short *indices, const unsigned int &numIndices, TR_VE
                             rs.depthBuffer[incr] = depth;
 
                             // Draw the pixel on the screen buffer
-                            rs.colorBuffer[incr] = blendPBR((int)texU&(rs.material.baseColor.width-1), (int)texV&(rs.material.baseColor.height-1));
-                            //rs.colorBuffer[incr] = blend(incr, (unsigned int)texU&(rs.material.baseColor.width-1), (unsigned int)texV&(rs.material.baseColor.height-1), shade);
+                            //rs.colorBuffer[incr] = blendPBR((int)texU&(rs.material.baseColor.width-1), (int)texV&(rs.material.baseColor.height-1));
+                            rs.colorBuffer[incr] = blend(incr, (unsigned int)texU&(rs.material.baseColor.width-1), (unsigned int)texV&(rs.material.baseColor.height-1), shade);
                         }
                     }
 

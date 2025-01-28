@@ -4,7 +4,7 @@
 #include "math.h"
 #include <vector>
 
-#define PARAMETERBUFFER_SIZE 1000000
+#define PARAMETERBUFFER_SIZE 1000000 // About 40000 vertices total
 #define TILE_SIZE 32
 
 struct VERTEX
@@ -130,7 +130,7 @@ void apiInitialise(const int &width, const int &height, void *debugBuffer = null
 
 void apiRelease();
 
-void apiSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsigned short *indices, const unsigned int &numIndices, VEC3 center);
+bool apiSendVertices (VERTEX *vertices, const unsigned int &numVertices, unsigned short *indices, const unsigned int &numIndices, VEC3 center);
 
 void apiSetMaterial(MATERIAL material);
 
